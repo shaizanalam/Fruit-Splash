@@ -2,7 +2,7 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
   server: {
-    port: 5173,
+    port: 4000,
     host: true, // exposes the server on local network IP address
     open: true  // auto opens the browser on server startup
   },

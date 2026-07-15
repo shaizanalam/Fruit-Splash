@@ -11,7 +11,9 @@ export const FRUIT_TYPES = {
   DRAGON_FRUIT: { name: 'Dragon Fruit', radius: 36, juiceColor: '#ff007f', outerColor: '#ff0055' },
   STRAWBERRY: { name: 'Strawberry', radius: 26, juiceColor: '#ff0033', outerColor: '#d6002a' },
   GRAPES: { name: 'Grapes', radius: 32, juiceColor: '#9932cc', outerColor: '#6f00ff' },
-  MANGO: { name: 'Mango', radius: 36, juiceColor: '#ff9900', outerColor: '#ff8800' }
+  MANGO: { name: 'Mango', radius: 36, juiceColor: '#ff9900', outerColor: '#ff8800' },
+  FREEZE_BANANA: { name: 'Freeze Banana', radius: 32, juiceColor: '#00f0ff', outerColor: '#00f0ff', isPowerUp: true, powerUpType: 'freeze' },
+  FRENZY_PINEAPPLE: { name: 'Frenzy Pineapple', radius: 42, juiceColor: '#ffaa00', outerColor: '#ffd700', isPowerUp: true, powerUpType: 'frenzy' }
 };
 
 export class Fruit {
@@ -20,7 +22,8 @@ export class Fruit {
     this.canvasHeight = canvasHeight;
 
     // Pick type
-    const keys = Object.keys(FRUIT_TYPES);
+    // Filter out power-up types for standard random spawning
+    const keys = Object.keys(FRUIT_TYPES).filter(k => !FRUIT_TYPES[k].isPowerUp);
     this.typeKey = forceType || keys[Math.floor(Math.random() * keys.length)];
     this.config = FRUIT_TYPES[this.typeKey];
 
@@ -34,7 +37,7 @@ export class Fruit {
     // Trajectory physics
     // Launch angle upwards towards center
     const targetX = canvasWidth / 2 + randomRange(-150, 150);
-    const gravity = 0.32; // match game loop gravity
+    const gravity = 0.11; // match game loop gravity
     
     // We want the fruit to reach its peak near the top-middle (e.g. y = 150..300)
     const peakY = randomRange(140, 300);
@@ -66,28 +69,29 @@ export class Fruit {
     this.life = 1.0; // opacity of sliced halves decay
   }
 
-  update() {
+  update(dt = 16.66) {
+    const timeScale = dt / 16.66;
     if (!this.sliced) {
       // Normal physics
-      this.x += this.vx;
-      this.y += this.vy;
-      this.vy += this.gravity;
-      this.angle += this.spin;
+      this.x += this.vx * timeScale;
+      this.y += this.vy * timeScale;
+      this.vy += this.gravity * timeScale;
+      this.angle += this.spin * timeScale;
     } else {
       // Update sliced halves separately
       if (this.half1 && this.half2) {
-        this.half1.x += this.half1.vx;
-        this.half1.y += this.half1.vy;
-        this.half1.vy += this.gravity;
-        this.half1.angle += this.half1.spin;
+        this.half1.x += this.half1.vx * timeScale;
+        this.half1.y += this.half1.vy * timeScale;
+        this.half1.vy += this.gravity * timeScale;
+        this.half1.angle += this.half1.spin * timeScale;
 
-        this.half2.x += this.half2.vx;
-        this.half2.y += this.half2.vy;
-        this.half2.vy += this.gravity;
-        this.half2.angle += this.half2.spin;
+        this.half2.x += this.half2.vx * timeScale;
+        this.half2.y += this.half2.vy * timeScale;
+        this.half2.vy += this.gravity * timeScale;
+        this.half2.angle += this.half2.spin * timeScale;
 
         // Fade out halves
-        this.life -= 0.02;
+        this.life -= 0.02 * timeScale;
       }
     }
   }
@@ -102,11 +106,14 @@ export class Fruit {
     }
   }
 
-  slice(swordAngle) {
+  slice(swordAngle, sliceOffset = 0) {
     if (this.sliced) return;
 
     this.sliced = true;
-    // Store slice orientation (normalized)
+    
+    // Store slice geometry for rendering precise cut line
+    this.cutAngleLocal = swordAngle - this.angle;
+    this.cutOffset = sliceOffset;
     this.sliceAngle = swordAngle;
 
     const pushForce = 3.5;
@@ -163,6 +170,12 @@ export class Fruit {
     ctx.translate(this.x, this.y);
     ctx.rotate(this.angle);
 
+    // Apply glowing aura outline for power-up fruits
+    if (this.config.isPowerUp) {
+      ctx.shadowBlur = 25;
+      ctx.shadowColor = this.config.juiceColor;
+    }
+
     this.drawProceduralFruit(ctx, 0, 0, this.radius);
     this.drawGlossHighlight(ctx, 0, 0, this.radius);
 
@@ -183,10 +196,20 @@ export class Fruit {
     ctx.save();
     ctx.translate(this.half1.x, this.half1.y);
     ctx.rotate(this.half1.angle);
-    // Draw clip mask relative to slicing angle
+    
+    // Apply glowing outline for power-up halves
+    if (this.config.isPowerUp) {
+      ctx.shadowBlur = 20;
+      ctx.shadowColor = this.config.juiceColor;
+    }
+    
+    // Apply local cut angle and offset for clip
+    ctx.rotate(this.cutAngleLocal || 0);
     ctx.beginPath();
-    ctx.rect(-this.radius - 20, -this.radius - 20, this.radius * 2 + 40, this.radius + 20);
+    ctx.rect(-this.radius - 50, -this.radius - 50, this.radius * 2 + 100, this.radius + 50 + (this.cutOffset || 0));
     ctx.clip();
+    ctx.rotate(-(this.cutAngleLocal || 0));
+    
     this.drawProceduralFruit(ctx, 0, 0, this.radius);
     this.drawGlossHighlight(ctx, 0, 0, this.radius);
     ctx.restore();
@@ -195,10 +218,20 @@ export class Fruit {
     ctx.save();
     ctx.translate(this.half2.x, this.half2.y);
     ctx.rotate(this.half2.angle);
-    // Draw clip mask opposite of slicing angle
+    
+    // Apply glowing outline for power-up halves
+    if (this.config.isPowerUp) {
+      ctx.shadowBlur = 20;
+      ctx.shadowColor = this.config.juiceColor;
+    }
+    
+    // Apply local cut angle and offset for clip
+    ctx.rotate(this.cutAngleLocal || 0);
     ctx.beginPath();
-    ctx.rect(-this.radius - 20, 0, this.radius * 2 + 40, this.radius + 20);
+    ctx.rect(-this.radius - 50, (this.cutOffset || 0), this.radius * 2 + 100, this.radius + 50 - (this.cutOffset || 0));
     ctx.clip();
+    ctx.rotate(-(this.cutAngleLocal || 0));
+    
     this.drawProceduralFruit(ctx, 0, 0, this.radius);
     this.drawGlossHighlight(ctx, 0, 0, this.radius);
     ctx.restore();
@@ -208,261 +241,405 @@ export class Fruit {
 
   // Draw actual vector graphics based on fruit type
   drawProceduralFruit(ctx, cx, cy, r) {
+    ctx.save();
     ctx.shadowBlur = 8;
     ctx.shadowColor = this.config.juiceColor + '77';
 
     switch (this.typeKey) {
       case 'WATERMELON':
         // Outer Rind (Dark Green)
-        ctx.fillStyle = '#1d5a16';
+        ctx.fillStyle = '#113c0f';
         ctx.beginPath();
         ctx.arc(cx, cy, r, 0, Math.PI * 2);
         ctx.fill();
 
-        // Rind Stripes (Lighter green)
-        ctx.strokeStyle = '#2d8c22';
+        // Wavy Rind Stripes
+        ctx.strokeStyle = '#276922';
         ctx.lineWidth = 4;
         for (let i = -3; i <= 3; i++) {
+          if (i === 0) continue;
           ctx.beginPath();
-          ctx.ellipse(cx, cy, r * 0.95, Math.abs(r * i * 0.25), Math.PI/6, 0, Math.PI * 2);
+          const yOffset = i * r * 0.25;
+          ctx.moveTo(cx - r * 0.9, cy + yOffset);
+          ctx.quadraticCurveTo(cx, cy + yOffset + (i > 0 ? 15 : -15), cx + r * 0.9, cy + yOffset);
           ctx.stroke();
         }
 
         // Inner flesh (White-Green transition rind)
-        ctx.fillStyle = '#ebfed1';
+        ctx.fillStyle = '#f2ffe3';
         ctx.beginPath();
         ctx.arc(cx, cy, r * 0.88, 0, Math.PI * 2);
         ctx.fill();
 
         // Inner flesh (Red)
-        const watermelonGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 0.8);
+        const watermelonGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 0.82);
         watermelonGrad.addColorStop(0, '#ff1a53');
         watermelonGrad.addColorStop(0.85, '#ff003c');
-        watermelonGrad.addColorStop(1, '#ff3b3b');
+        watermelonGrad.addColorStop(1, '#e00030');
         ctx.fillStyle = watermelonGrad;
         ctx.beginPath();
-        ctx.arc(cx, cy, r * 0.8, 0, Math.PI * 2);
+        ctx.arc(cx, cy, r * 0.82, 0, Math.PI * 2);
         ctx.fill();
 
-        // Seeds
-        ctx.fillStyle = '#111';
-        ctx.shadowBlur = 0;
-        const seedAngles = [0, 0.4, 0.9, 1.5, 2.1, 2.7, 3.3, 3.9, 4.5, 5.1, 5.8];
+        // Shiny Seeds (Teardrop shape with highlights)
+        const seedAngles = [0.2, 0.7, 1.2, 1.7, 2.2, 2.7, 3.2, 3.7, 4.2, 4.7, 5.2, 5.7];
         seedAngles.forEach(a => {
-          const sx = cx + Math.cos(a) * (r * 0.5);
-          const sy = cy + Math.sin(a) * (r * 0.5);
+          const sx = cx + Math.cos(a) * (r * 0.52);
+          const sy = cy + Math.sin(a) * (r * 0.52);
+          
+          ctx.save();
+          ctx.translate(sx, sy);
+          ctx.rotate(a + Math.PI/2);
+          
+          // Seed Body (Dark Brown/Black)
+          ctx.fillStyle = '#221915';
           ctx.beginPath();
-          ctx.ellipse(sx, sy, 3, 1.5, a, 0, Math.PI * 2);
+          ctx.moveTo(0, -4);
+          ctx.quadraticCurveTo(2.5, 2, 0, 4);
+          ctx.quadraticCurveTo(-2.5, 2, 0, -4);
           ctx.fill();
+          
+          // Seed Highlight (White glare)
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath();
+          ctx.arc(-0.8, -1, 0.8, 0, Math.PI * 2);
+          ctx.fill();
+          
+          ctx.restore();
         });
         break;
 
       case 'APPLE':
-        // Apple Body (Red Radial Gradient)
-        const appleGrad = ctx.createRadialGradient(cx - r*0.2, cy - r*0.2, 5, cx, cy, r);
-        appleGrad.addColorStop(0, '#ff4d6d');
-        appleGrad.addColorStop(0.65, '#ff0f39');
-        appleGrad.addColorStop(1, '#a8001e');
+        // Shaded Indentation (Top shadow)
+        const appleGrad = ctx.createRadialGradient(cx - r*0.15, cy - r*0.3, 2, cx, cy, r);
+        appleGrad.addColorStop(0, '#ffe875'); // yellow center
+        appleGrad.addColorStop(0.3, '#ff4d6d'); // pinkish transition
+        appleGrad.addColorStop(0.75, '#e60029'); // rich red
+        appleGrad.addColorStop(1, '#9b001a'); // dark red rim
         
         ctx.fillStyle = appleGrad;
         ctx.beginPath();
-        // Apple shape indentation at top and bottom
         ctx.moveTo(cx, cy - r * 0.8);
-        ctx.bezierCurveTo(cx + r * 0.4, cy - r * 1.1, cx + r * 1.1, cy - r * 0.5, cx + r * 1.0, cy);
-        ctx.bezierCurveTo(cx + r * 0.9, cy + r * 0.7, cx + r * 0.4, cy + r * 1.0, cx, cy + r * 0.9);
-        ctx.bezierCurveTo(cx - r * 0.4, cy + r * 1.0, cx - r * 0.9, cy + r * 0.7, cx - r * 1.0, cy);
-        ctx.bezierCurveTo(cx - r * 1.1, cy - r * 0.5, cx - r * 0.4, cy - r * 1.1, cx, cy - r * 0.8);
+        ctx.bezierCurveTo(cx + r * 0.45, cy - r * 1.1, cx + r * 1.1, cy - r * 0.5, cx + r * 1.0, cy);
+        ctx.bezierCurveTo(cx + r * 0.9, cy + r * 0.75, cx + r * 0.45, cy + r * 1.05, cx, cy + r * 0.92);
+        ctx.bezierCurveTo(cx - r * 0.45, cy + r * 1.05, cx - r * 0.9, cy + r * 0.75, cx - r * 1.0, cy);
+        ctx.bezierCurveTo(cx - r * 1.1, cy - r * 0.5, cx - r * 0.45, cy - r * 1.1, cx, cy - r * 0.8);
         ctx.fill();
 
-        // Stem (Brown)
-        ctx.shadowBlur = 0;
-        ctx.strokeStyle = '#6d4c41';
+        // Skin Speckles
+        ctx.fillStyle = 'rgba(255, 235, 150, 0.4)';
+        for (let i = 0; i < 20; i++) {
+          const sa = Math.random() * Math.PI * 2;
+          const sd = r * (0.3 + Math.random() * 0.6);
+          ctx.beginPath();
+          ctx.arc(cx + Math.cos(sa) * sd, cy + Math.sin(sa) * sd, 0.8, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // Stem (Brown curved)
+        ctx.strokeStyle = '#5a3d28';
         ctx.lineWidth = 3;
+        ctx.lineCap = 'round';
         ctx.beginPath();
-        ctx.moveTo(cx, cy - r * 0.8);
-        ctx.quadraticCurveTo(cx + r * 0.25, cy - r * 1.25, cx + r * 0.2, cy - r * 1.35);
+        ctx.moveTo(cx, cy - r * 0.78);
+        ctx.quadraticCurveTo(cx + r * 0.2, cy - r * 1.1, cx + r * 0.18, cy - r * 1.3);
         ctx.stroke();
 
-        // Leaf (Green)
-        ctx.fillStyle = '#4caf50';
+        // Leaf with veins
+        ctx.save();
+        ctx.translate(cx + r*0.12, cy - r*1.15);
+        ctx.rotate(-Math.PI/6);
+        
+        // Leaf body
+        const leafGrad = ctx.createLinearGradient(-10, 0, 15, 0);
+        leafGrad.addColorStop(0, '#2e7d32');
+        leafGrad.addColorStop(1, '#81c784');
+        ctx.fillStyle = leafGrad;
+        
         ctx.beginPath();
-        ctx.ellipse(cx + r*0.25, cy - r*1.2, r*0.3, r*0.12, -Math.PI/6, 0, Math.PI*2);
+        ctx.moveTo(-10, 0);
+        ctx.quadraticCurveTo(0, -8, 15, -2);
+        ctx.quadraticCurveTo(5, 6, -10, 0);
         ctx.fill();
+        
+        // Leaf vein
+        ctx.strokeStyle = '#1b5e20';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(-10, 0);
+        ctx.quadraticCurveTo(0, -1, 15, -2);
+        ctx.stroke();
+        
+        ctx.restore();
         break;
 
       case 'ORANGE':
         // Rind
-        ctx.fillStyle = '#d35400';
+        ctx.fillStyle = '#cc5200';
         ctx.beginPath();
         ctx.arc(cx, cy, r, 0, Math.PI * 2);
         ctx.fill();
 
-        // Inner white skin
-        ctx.fillStyle = '#fff8ee';
+        // Inner white skin (Pith)
+        ctx.fillStyle = '#fff9ee';
         ctx.beginPath();
-        ctx.arc(cx, cy, r * 0.92, 0, Math.PI * 2);
+        ctx.arc(cx, cy, r * 0.94, 0, Math.PI * 2);
         ctx.fill();
 
         // Orange pulp base
-        ctx.fillStyle = '#ff9f1c';
+        ctx.fillStyle = '#f37a12';
         ctx.beginPath();
-        ctx.arc(cx, cy, r * 0.86, 0, Math.PI * 2);
+        ctx.arc(cx, cy, r * 0.88, 0, Math.PI * 2);
         ctx.fill();
 
-        // Segments separation
-        ctx.strokeStyle = '#fff8ee';
-        ctx.lineWidth = 2;
-        ctx.shadowBlur = 0;
-        const segments = 8;
-        for (let i = 0; i < segments; i++) {
-          const a = (i * Math.PI * 2) / segments;
+        // Realistic Wedge Segments
+        const orangeWedges = 8;
+        ctx.fillStyle = '#ff9900';
+        ctx.strokeStyle = '#fff9ee';
+        ctx.lineWidth = 2.5;
+        
+        for (let i = 0; i < orangeWedges; i++) {
+          const aStart = (i * Math.PI * 2) / orangeWedges + 0.05;
+          const aEnd = ((i + 1) * Math.PI * 2) / orangeWedges - 0.05;
+          
           ctx.beginPath();
           ctx.moveTo(cx, cy);
-          ctx.lineTo(cx + Math.cos(a) * r * 0.86, cy + Math.sin(a) * r * 0.86);
-          ctx.stroke();
-
-          // Draw wedge pulps inside each segment
-          ctx.fillStyle = '#ffa500';
-          const wedgeAngle = a + Math.PI / segments;
-          const wx = cx + Math.cos(wedgeAngle) * (r * 0.45);
-          const wy = cy + Math.sin(wedgeAngle) * (r * 0.45);
-          ctx.beginPath();
-          ctx.arc(wx, wy, r * 0.22, 0, Math.PI * 2);
+          ctx.arc(cx, cy, r * 0.84, aStart, aEnd);
+          ctx.closePath();
           ctx.fill();
+          ctx.stroke();
+          
+          // Pulp Texture (inside each wedge)
+          ctx.fillStyle = '#ffaa33';
+          const aMid = (aStart + aEnd) / 2;
+          for (let d = 0.3; d < 0.8; d += 0.18) {
+            const px = cx + Math.cos(aMid + (Math.random() - 0.5) * 0.1) * r * d;
+            const py = cy + Math.sin(aMid + (Math.random() - 0.5) * 0.1) * r * d;
+            ctx.beginPath();
+            ctx.arc(px, py, 2, 0, Math.PI*2);
+            ctx.fill();
+          }
         }
 
-        // Orange core center
-        ctx.fillStyle = '#fff8ee';
+        // Orange center core
+        ctx.fillStyle = '#fff9ee';
         ctx.beginPath();
         ctx.arc(cx, cy, r * 0.12, 0, Math.PI * 2);
         ctx.fill();
         break;
 
       case 'KIWI':
-        // Brown Skin
-        ctx.fillStyle = '#654321';
+        // Brown Skin with dash fuzzy texture
+        ctx.fillStyle = '#5c4021';
         ctx.beginPath();
         ctx.arc(cx, cy, r, 0, Math.PI * 2);
         ctx.fill();
 
-        // Kiwi outer green ring
-        ctx.fillStyle = '#a2d149';
+        // Fuzzy dashes
+        ctx.strokeStyle = '#3e2713';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([2, 4]);
         ctx.beginPath();
-        ctx.arc(cx, cy, r * 0.9, 0, Math.PI * 2);
+        ctx.arc(cx, cy, r - 1, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]); // Reset
+
+        // Kiwi outer green ring
+        const kiwiGrad = ctx.createRadialGradient(cx, cy, r*0.3, cx, cy, r*0.9);
+        kiwiGrad.addColorStop(0, '#c5e1a5');
+        kiwiGrad.addColorStop(0.5, '#8bc34a');
+        kiwiGrad.addColorStop(1, '#558b2f');
+        ctx.fillStyle = kiwiGrad;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r * 0.92, 0, Math.PI * 2);
         ctx.fill();
 
         // Inner core (soft yellow-green)
-        ctx.fillStyle = '#e8ffaa';
+        ctx.fillStyle = '#f1f8e9';
         ctx.beginPath();
-        ctx.arc(cx, cy, r * 0.35, 0, Math.PI * 2);
+        ctx.arc(cx, cy, r * 0.34, 0, Math.PI * 2);
         ctx.fill();
 
         // Radiating rays
-        ctx.strokeStyle = '#eefec0';
-        ctx.lineWidth = 1.5;
-        ctx.shadowBlur = 0;
-        const rays = 16;
-        for (let i = 0; i < rays; i++) {
-          const a = (i * Math.PI * 2) / rays;
+        ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+        ctx.lineWidth = 1;
+        const kiwiRays = 18;
+        for (let i = 0; i < kiwiRays; i++) {
+          const a = (i * Math.PI * 2) / kiwiRays;
           ctx.beginPath();
-          ctx.moveTo(cx + Math.cos(a) * (r * 0.35), cy + Math.sin(a) * (r * 0.35));
-          ctx.lineTo(cx + Math.cos(a) * (r * 0.8), cy + Math.sin(a) * (r * 0.8));
+          ctx.moveTo(cx + Math.cos(a) * (r * 0.34), cy + Math.sin(a) * (r * 0.34));
+          // Wavy lines
+          ctx.quadraticCurveTo(
+            cx + Math.cos(a + 0.1) * (r * 0.55), cy + Math.sin(a + 0.1) * (r * 0.55),
+            cx + Math.cos(a) * (r * 0.76), cy + Math.sin(a) * (r * 0.76)
+          );
           ctx.stroke();
 
-          // Black seeds clustered around white core
-          ctx.fillStyle = '#111111';
-          const seedAngle = a + Math.PI / rays;
-          const sx = cx + Math.cos(seedAngle) * (r * 0.42);
-          const sy = cy + Math.sin(seedAngle) * (r * 0.42);
+          // Black seeds clustered around core
+          ctx.fillStyle = '#1a1a1a';
+          const seedAngle = a + Math.PI / kiwiRays;
+          const sx = cx + Math.cos(seedAngle) * (r * 0.44 + Math.random() * r * 0.08);
+          const sy = cy + Math.sin(seedAngle) * (r * 0.44 + Math.random() * r * 0.08);
           ctx.beginPath();
-          ctx.arc(sx, sy, 2, 0, Math.PI * 2);
+          ctx.arc(sx, sy, 1.8, 0, Math.PI * 2);
           ctx.fill();
         }
         break;
 
       case 'BANANA':
-        // Yellow skin
-        ctx.fillStyle = '#ffe033';
+      case 'FREEZE_BANANA':
+        const isFreeze = this.typeKey === 'FREEZE_BANANA';
+        
+        ctx.save();
+        ctx.translate(cx, cy);
+        
+        // 3D Faceted banana drawing using paths
+        const baseColor = isFreeze ? '#00f0ff' : '#ffe033';
+        const shadowColor = isFreeze ? '#008ba3' : '#e6c300';
+        const highlightColor = isFreeze ? '#e0ffff' : '#fffa65';
+
+        // 1. Shadow Facet (Bottom layer)
+        ctx.fillStyle = shadowColor;
         ctx.beginPath();
-        // Draw crescent shape
-        ctx.arc(cx - r * 0.2, cy, r, -Math.PI / 2.3, Math.PI / 2.3, false);
-        ctx.arc(cx - r * 0.05, cy, r * 0.92, Math.PI / 2.5, -Math.PI / 2.5, true);
-        ctx.closePath();
+        ctx.arc(-r * 0.2, 0, r, -Math.PI / 2.3, Math.PI / 2.3, false);
+        ctx.arc(-r * 0.08, 0, r * 0.94, Math.PI / 2.4, -Math.PI / 2.4, true);
         ctx.fill();
 
-        // Tips (Brown)
-        ctx.fillStyle = '#5c4033';
+        // 2. Mid Facet (Base layer)
+        ctx.fillStyle = baseColor;
         ctx.beginPath();
-        // Top tip
-        ctx.arc(cx + r * 0.45, cy - r * 0.8, 4, 0, Math.PI * 2);
-        // Bottom tip
-        ctx.arc(cx + r * 0.45, cy + r * 0.8, 4, 0, Math.PI * 2);
+        ctx.arc(-r * 0.12, 0, r * 0.96, -Math.PI / 2.35, Math.PI / 2.35, false);
+        ctx.arc(r * 0.05, 0, r * 0.88, Math.PI / 2.5, -Math.PI / 2.5, true);
         ctx.fill();
+
+        // 3. Highlight Facet (Top layer)
+        ctx.fillStyle = highlightColor;
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 0.9, -Math.PI / 2.4, Math.PI / 2.4, false);
+        ctx.arc(r * 0.15, 0, r * 0.82, Math.PI / 2.6, -Math.PI / 2.6, true);
+        ctx.fill();
+
+        // Tips (Brown-green or cyan-white)
+        ctx.fillStyle = isFreeze ? '#ffffff' : '#5c4033';
+        ctx.beginPath();
+        ctx.arc(r * 0.45, -r * 0.8, 4.5, 0, Math.PI * 2);
+        ctx.arc(r * 0.45, r * 0.8, 4.5, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Green stem end
+        ctx.fillStyle = isFreeze ? '#00e5ff' : '#9e9d24';
+        ctx.beginPath();
+        ctx.arc(r * 0.4, -r * 0.83, 3, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
         break;
 
       case 'PINEAPPLE':
-        // Yellow base oval
-        ctx.fillStyle = '#ffbf00';
-        ctx.beginPath();
-        ctx.ellipse(cx, cy, r * 0.72, r * 0.95, 0, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Crosshatch segments (Pineapple grids)
-        ctx.strokeStyle = '#e67300';
-        ctx.lineWidth = 2.5;
-        ctx.shadowBlur = 0;
-        for (let i = -3; i <= 3; i++) {
-          // Left-diagonal lines
-          ctx.beginPath();
-          ctx.moveTo(cx - r * 0.6, cy + i * 20);
-          ctx.lineTo(cx + r * 0.6, cy - i * 20 - 40);
-          ctx.stroke();
-
-          // Right-diagonal lines
-          ctx.beginPath();
-          ctx.moveTo(cx + r * 0.6, cy + i * 20);
-          ctx.lineTo(cx - r * 0.6, cy - i * 20 - 40);
-          ctx.stroke();
-        }
-
-        // Draw green spikes on top
-        ctx.fillStyle = '#228b22';
-        ctx.beginPath();
-        ctx.moveTo(cx, cy - r * 0.9);
-        // Central tall leaf
-        ctx.quadraticCurveTo(cx, cy - r * 1.5, cx, cy - r * 1.6);
-        ctx.quadraticCurveTo(cx + r * 0.1, cy - r * 1.3, cx + r * 0.2, cy - r * 0.8);
+      case 'FRENZY_PINEAPPLE':
+        const isFrenzy = this.typeKey === 'FRENZY_PINEAPPLE';
         
-        // Left side leaves
-        ctx.moveTo(cx - r * 0.1, cy - r * 0.9);
-        ctx.quadraticCurveTo(cx - r * 0.45, cy - r * 1.45, cx - r * 0.5, cy - r * 1.55);
-        ctx.quadraticCurveTo(cx - r * 0.25, cy - r * 1.15, cx, cy - r * 0.85);
+        // 1. Draw Leaves first so they sit behind the body
+        ctx.save();
+        ctx.translate(cx, cy);
+        
+        const leafColorPrimary = isFrenzy ? '#ff3300' : '#2e7d32';
+        const leafColorSecondary = isFrenzy ? '#ffaa00' : '#4caf50';
 
-        // Right side leaves
-        ctx.moveTo(cx + r * 0.1, cy - r * 0.9);
-        ctx.quadraticCurveTo(cx + r * 0.45, cy - r * 1.45, cx + r * 0.5, cy - r * 1.55);
-        ctx.quadraticCurveTo(cx + r * 0.25, cy - r * 1.15, cx, cy - r * 0.85);
+        // Layered leaves
+        ctx.fillStyle = leafColorSecondary;
+        // Outer leaf wings
+        ctx.beginPath();
+        ctx.ellipse(-r*0.3, -r*0.9, r*0.2, r*0.5, -Math.PI/6, 0, Math.PI*2);
+        ctx.ellipse(r*0.3, -r*0.9, r*0.2, r*0.5, Math.PI/6, 0, Math.PI*2);
         ctx.fill();
+
+        ctx.fillStyle = leafColorPrimary;
+        // Central tall leaf
+        ctx.beginPath();
+        ctx.ellipse(0, -r*1.1, r*0.18, r*0.6, 0, 0, Math.PI*2);
+        ctx.fill();
+        
+        ctx.restore();
+
+        // 2. Pineapple Body (Textured scales)
+        const bodyGrad = ctx.createRadialGradient(cx, cy, r*0.2, cx, cy, r);
+        bodyGrad.addColorStop(0, isFrenzy ? '#ffe082' : '#ffd54f');
+        bodyGrad.addColorStop(0.7, isFrenzy ? '#ff8f00' : '#ffb300');
+        bodyGrad.addColorStop(1, isFrenzy ? '#d84315' : '#ff6f00');
+        ctx.fillStyle = bodyGrad;
+        
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, r * 0.76, r * 0.96, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Drawing overlapping scale texture (3D grid)
+        ctx.strokeStyle = isFrenzy ? '#d84315' : '#e65100';
+        ctx.lineWidth = 2.5;
+        
+        // Draw scales manually using loop
+        const rows = 6;
+        const cols = 5;
+        for (let row = 0; row < rows; row++) {
+          const y = cy - r * 0.7 + (row / (rows-1)) * r * 1.4;
+          const wRow = Math.sqrt(1 - Math.pow((y - cy) / r, 2)) * r * 0.76;
+          
+          for (let col = 0; col < cols; col++) {
+            const x = cx - wRow + (col / (cols-1)) * wRow * 2;
+            
+            // Draw diamond scale
+            ctx.save();
+            ctx.translate(x, y);
+            
+            ctx.beginPath();
+            ctx.moveTo(0, -7);
+            ctx.lineTo(8, 0);
+            ctx.lineTo(0, 7);
+            ctx.lineTo(-8, 0);
+            ctx.closePath();
+            ctx.stroke();
+            
+            // Shading in scale
+            ctx.fillStyle = isFrenzy ? '#ff7043' : '#ffca28';
+            ctx.beginPath();
+            ctx.arc(0, 0, 2.5, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.restore();
+          }
+        }
         break;
 
       case 'DRAGON_FRUIT':
-        // Pink Skin
-        ctx.fillStyle = '#ff1493';
+        // Pink Skin Base
+        const dragonSkinGrad = ctx.createRadialGradient(cx - r*0.1, cy - r*0.1, 5, cx, cy, r);
+        dragonSkinGrad.addColorStop(0, '#ff4081');
+        dragonSkinGrad.addColorStop(0.7, '#f50057');
+        dragonSkinGrad.addColorStop(1, '#c51162');
+        ctx.fillStyle = dragonSkinGrad;
         ctx.beginPath();
         ctx.arc(cx, cy, r, 0, Math.PI * 2);
         ctx.fill();
 
-        // Green scales overlapping
-        ctx.fillStyle = '#00ff66';
-        ctx.shadowBlur = 0;
-        const scales = 10;
-        for (let i = 0; i < scales; i++) {
-          const a = (i * Math.PI * 2) / scales;
-          const sx = cx + Math.cos(a) * r;
-          const sy = cy + Math.sin(a) * r;
+        // Curved Flame-like Scales
+        ctx.fillStyle = '#00e676';
+        ctx.strokeStyle = '#c51162';
+        ctx.lineWidth = 1.5;
+        const dragonScales = 12;
+        for (let i = 0; i < dragonScales; i++) {
+          const a = (i * Math.PI * 2) / dragonScales;
+          ctx.save();
+          ctx.translate(cx, cy);
+          ctx.rotate(a);
+          
           ctx.beginPath();
-          ctx.arc(sx, sy, 5, 0, Math.PI * 2);
+          ctx.moveTo(r - 5, -8);
+          ctx.quadraticCurveTo(r + 14, 0, r - 5, 8);
+          ctx.quadraticCurveTo(r + 4, 0, r - 5, -8);
           ctx.fill();
+          ctx.stroke();
+          
+          ctx.restore();
         }
 
         // White core interior
@@ -471,105 +648,166 @@ export class Fruit {
         ctx.arc(cx, cy, r * 0.82, 0, Math.PI * 2);
         ctx.fill();
 
-        // Tiny black seeds
+        // Seed pockets (randomized but realistic seed pattern)
         ctx.fillStyle = '#111111';
-        for (let i = 0; i < 40; i++) {
-          // Distributed randomly inside white circle
-          const sa = Math.random() * Math.PI * 2;
-          const sd = Math.random() * (r * 0.65);
+        for (let i = 0; i < 45; i++) {
+          const sa = (i * 2.4);
+          const sd = Math.sqrt(Math.random()) * (r * 0.72);
+          const sx = cx + Math.cos(sa) * sd;
+          const sy = cy + Math.sin(sa) * sd;
+          
           ctx.beginPath();
-          ctx.arc(cx + Math.cos(sa) * sd, cy + Math.sin(sa) * sd, 1.5, 0, Math.PI * 2);
+          ctx.arc(sx, sy, 1.6, 0, Math.PI * 2);
           ctx.fill();
         }
         break;
 
       case 'STRAWBERRY':
-        // Red body (rounded triangle/heart)
+        // Red body (rounded heart)
         const strawberryGrad = ctx.createRadialGradient(cx - r*0.1, cy - r*0.1, 2, cx, cy, r);
-        strawberryGrad.addColorStop(0, '#ff2e51');
-        strawberryGrad.addColorStop(0.8, '#ff052f');
-        strawberryGrad.addColorStop(1, '#9b001a');
+        strawberryGrad.addColorStop(0, '#ff4d6d');
+        strawberryGrad.addColorStop(0.7, '#ff0f39');
+        strawberryGrad.addColorStop(1, '#b7001c');
         ctx.fillStyle = strawberryGrad;
         
         ctx.beginPath();
-        ctx.moveTo(cx, cy - r * 0.7);
-        ctx.bezierCurveTo(cx + r * 0.75, cy - r * 0.9, cx + r * 1.05, cy, cx + r * 0.5, cy + r * 0.8);
-        ctx.bezierCurveTo(cx + r * 0.25, cy + r * 1.0, cx - r * 0.25, cy + r * 1.0, cx - r * 0.5, cy + r * 0.8);
-        ctx.bezierCurveTo(cx - r * 1.05, cy, cx - r * 0.75, cy - r * 0.9, cx, cy - r * 0.7);
+        ctx.moveTo(cx, cy - r * 0.75);
+        ctx.bezierCurveTo(cx + r * 0.8, cy - r * 0.95, cx + r * 1.1, cy + r * 0.05, cx + r * 0.5, cy + r * 0.85);
+        ctx.bezierCurveTo(cx + r * 0.2, cy + r * 1.05, cx - r * 0.2, cy + r * 1.05, cx - r * 0.5, cy + r * 0.85);
+        ctx.bezierCurveTo(cx - r * 1.1, cy + r * 0.05, cx - r * 0.8, cy - r * 0.95, cx, cy - r * 0.75);
         ctx.fill();
 
-        // Green leaves crown
-        ctx.fillStyle = '#2e8b57';
-        ctx.shadowBlur = 0;
+        // Layered Crown Leaves
+        ctx.fillStyle = '#1b5e20';
         ctx.beginPath();
-        ctx.moveTo(cx, cy - r * 0.65);
-        ctx.lineTo(cx - r * 0.45, cy - r * 0.85);
-        ctx.lineTo(cx - r * 0.2, cy - r * 0.72);
-        ctx.lineTo(cx, cy - r * 0.95);
-        ctx.lineTo(cx + r * 0.2, cy - r * 0.72);
-        ctx.lineTo(cx + r * 0.45, cy - r * 0.85);
-        ctx.closePath();
+        ctx.moveTo(cx, cy - r * 0.7);
+        ctx.bezierCurveTo(cx - r * 0.5, cy - r * 0.95, cx - r * 0.3, cy - r * 0.65, cx, cy - r * 0.65);
+        ctx.bezierCurveTo(cx + r * 0.3, cy - r * 0.65, cx + r * 0.5, cy - r * 0.95, cx, cy - r * 0.7);
+        ctx.fill();
+        
+        ctx.fillStyle = '#2e7d32';
+        ctx.beginPath();
+        ctx.moveTo(cx - r*0.25, cy - r*0.7);
+        ctx.lineTo(cx, cy - r*0.95);
+        ctx.lineTo(cx + r*0.25, cy - r*0.7);
         ctx.fill();
 
-        // Little yellow seed specks
-        ctx.fillStyle = '#ffeb3b';
-        for (let i = 0; i < 15; i++) {
-          const sa = (i * Math.PI * 2) / 15;
-          const sx = cx + Math.cos(sa) * (r * 0.55);
-          const sy = cy + Math.sin(sa) * (r * 0.55) + 3;
-          ctx.beginPath();
-          ctx.ellipse(sx, sy, 2, 1, sa, 0, Math.PI * 2);
-          ctx.fill();
+        // Tiny yellow seeds with indentation pockets
+        const sRows = 5;
+        for (let row = 1; row < sRows; row++) {
+          const yOffset = -r * 0.5 + (row / sRows) * r * 1.35;
+          const wRow = Math.sin((row / sRows) * Math.PI) * r * 0.7;
+          const sCount = row + 2;
+          
+          for (let i = 0; i < sCount; i++) {
+            const xOffset = -wRow + (i / (sCount - 1)) * wRow * 2;
+            const sx = cx + xOffset;
+            const sy = cy + yOffset;
+            
+            // Seed shadow pocket (makes it look 3D)
+            ctx.fillStyle = '#7a0010';
+            ctx.beginPath();
+            ctx.ellipse(sx + 0.8, sy + 0.8, 1.8, 1.0, Math.PI / 4, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Yellow seed
+            ctx.fillStyle = '#ffe082';
+            ctx.beginPath();
+            ctx.ellipse(sx, sy, 1.5, 0.8, Math.PI / 4, 0, Math.PI * 2);
+            ctx.fill();
+          }
         }
         break;
 
       case 'GRAPES':
-        // Bunch of overlapping grapes
-        ctx.shadowBlur = 4;
-        ctx.shadowColor = '#5a00a8';
-        const grapePositions = [
-          { dx: 0, dy: -r*0.4 },
-          { dx: -r*0.35, dy: -r*0.2 }, { dx: r*0.35, dy: -r*0.2 },
-          { dx: -r*0.4, dy: r*0.15 }, { dx: 0, dy: r*0.1 }, { dx: r*0.4, dy: r*0.15 },
-          { dx: -r*0.2, dy: r*0.45 }, { dx: r*0.2, dy: r*0.45 },
-          { dx: 0, dy: r*0.75 }
-        ];
-
-        // Stem
-        ctx.strokeStyle = '#4e3629';
+        // Vine leaf at the top
+        ctx.save();
+        ctx.translate(cx, cy - r * 0.4);
+        
+        // vine stem
+        ctx.strokeStyle = '#5d4037';
         ctx.lineWidth = 3.5;
         ctx.beginPath();
-        ctx.moveTo(cx, cy - r*0.4);
-        ctx.quadraticCurveTo(cx - 5, cy - r*0.8, cx + 5, cy - r*0.95);
+        ctx.moveTo(0, 0);
+        ctx.quadraticCurveTo(-8, -12, 5, -22);
         ctx.stroke();
+        
+        // grape vine leaf
+        ctx.fillStyle = '#388e3c';
+        ctx.beginPath();
+        ctx.moveTo(-4, -4);
+        ctx.quadraticCurveTo(-14, -18, -2, -14);
+        ctx.quadraticCurveTo(8, -24, 6, -10);
+        ctx.quadraticCurveTo(14, -6, 2, -2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
 
-        // Draw grapes
-        grapePositions.forEach(({ dx, dy }) => {
-          const grapeGrad = ctx.createRadialGradient(cx + dx - 4, cy + dy - 4, 1, cx + dx, cy + dy, 14);
+        // bunch of overlapping glossy grapes
+        const grapePositions = [
+          { dx: 0, dy: -r*0.4, sz: 14 },
+          { dx: -r*0.34, dy: -r*0.2, sz: 13.5 }, { dx: r*0.34, dy: -r*0.2, sz: 13.5 },
+          { dx: -r*0.38, dy: r*0.14, sz: 14 }, { dx: 0, dy: r*0.08, sz: 14.5 }, { dx: r*0.38, dy: r*0.14, sz: 14 },
+          { dx: -r*0.2, dy: r*0.44, sz: 13.5 }, { dx: r*0.2, dy: r*0.44, sz: 13.5 },
+          { dx: 0, dy: r*0.72, sz: 13 }
+        ];
+
+        grapePositions.forEach(({ dx, dy, sz }) => {
+          const grapeGrad = ctx.createRadialGradient(cx + dx - 4, cy + dy - 4, 1, cx + dx, cy + dy, sz);
           grapeGrad.addColorStop(0, '#bf55ff');
           grapeGrad.addColorStop(0.7, '#6f00ff');
-          grapeGrad.addColorStop(1, '#39008f');
+          grapeGrad.addColorStop(1, '#320075');
           ctx.fillStyle = grapeGrad;
 
           ctx.beginPath();
-          ctx.arc(cx + dx, cy + dy, 13, 0, Math.PI * 2);
+          ctx.arc(cx + dx, cy + dy, sz, 0, Math.PI * 2);
+          ctx.fill();
+          
+          // Specular highlight gloss overlay
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+          ctx.beginPath();
+          ctx.arc(cx + dx - sz * 0.35, cy + dy - sz * 0.35, sz * 0.22, 0, Math.PI * 2);
           ctx.fill();
         });
         break;
 
       case 'MANGO':
-        // Kidneyshaped mango
-        const mangoGrad = ctx.createRadialGradient(cx - r*0.15, cy - r*0.15, 3, cx, cy, r);
-        mangoGrad.addColorStop(0, '#ffd800');
-        mangoGrad.addColorStop(0.65, '#ff8000');
-        mangoGrad.addColorStop(1, '#c0392b');
-        ctx.fillStyle = mangoGrad;
+        // Kidneyshaped mango using bezier curves
+        ctx.save();
+        ctx.translate(cx, cy);
+        
+        const mangoSkinGrad = ctx.createRadialGradient(-r*0.2, -r*0.2, 5, 0, 0, r);
+        mangoSkinGrad.addColorStop(0, '#ffeb3b'); // Yellow face
+        mangoSkinGrad.addColorStop(0.5, '#ffa726'); // Orange sides
+        mangoSkinGrad.addColorStop(0.85, '#f44336'); // Red top
+        mangoSkinGrad.addColorStop(1, '#d32f2f'); // Deep red rim
+        ctx.fillStyle = mangoSkinGrad;
 
         ctx.beginPath();
-        ctx.ellipse(cx, cy, r, r * 0.72, Math.PI / 7, 0, Math.PI * 2);
+        ctx.moveTo(0, -r * 0.72);
+        ctx.bezierCurveTo(r * 0.7, -r * 0.95, r * 1.15, -r * 0.2, r * 0.86, r * 0.45);
+        ctx.bezierCurveTo(r * 0.65, r * 0.95, -r * 0.2, r * 0.92, -r * 0.6, r * 0.52);
+        ctx.bezierCurveTo(-r * 0.98, r * 0.15, -r * 0.75, -r * 0.4, 0, -r * 0.72);
+        ctx.closePath();
         ctx.fill();
+        
+        // Stem and leaf
+        ctx.strokeStyle = '#5d4037';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(0, -r * 0.72);
+        ctx.quadraticCurveTo(-r * 0.1, -r * 0.9, -r * 0.08, -r * 1.0);
+        ctx.stroke();
+        
+        ctx.fillStyle = '#388e3c';
+        ctx.beginPath();
+        ctx.ellipse(-r*0.24, -r*0.82, r*0.25, r*0.1, -Math.PI/6, 0, Math.PI*2);
+        ctx.fill();
+
+        ctx.restore();
         break;
     }
+    ctx.restore();
   }
 
   // Draw white glossy overlay curve to make it look realistic and premium

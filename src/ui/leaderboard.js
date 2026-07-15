@@ -3,18 +3,19 @@ import { padNumber } from '../utils/helpers.js';
 class Leaderboard {
   constructor() {
     this.storageKey = 'fruitslash_leaderboard';
-    this.defaultScores = [
-      { name: 'NINJA_MASTER', score: 12500, accuracy: 96, date: '2026-07-10 14:30' },
-      { name: 'AI_OVERLORD', score: 9800, accuracy: 94, date: '2026-07-11 09:15' },
-      { name: 'CYBER_SAMURAI', score: 8750, accuracy: 91, date: '2026-07-12 18:45' },
-      { name: 'KINETIC_KING', score: 7200, accuracy: 88, date: '2026-07-12 21:00' },
-      { name: 'FAST_FINGERS', score: 6500, accuracy: 95, date: '2026-07-13 11:20' },
-      { name: 'CHROME_SLASH', score: 5800, accuracy: 89, date: '2026-07-13 13:40' },
-      { name: 'WEBCAM_WARRIOR', score: 4900, accuracy: 85, date: '2026-07-14 10:10' },
-      { name: 'GHOST_SLICER', score: 4200, accuracy: 92, date: '2026-07-14 15:30' },
-      { name: 'LIGHTNING', score: 3500, accuracy: 90, date: '2026-07-14 16:00' },
-      { name: 'EXHIBIT_GUEST', score: 1800, accuracy: 82, date: '2026-07-14 16:15' }
-    ];
+    this.defaultScores = [];
+    
+    // Auto-clean existing placeholder data from localStorage
+    const stored = localStorage.getItem(this.storageKey);
+    if (stored) {
+      try {
+        const scores = JSON.parse(stored);
+        const hasPlaceholders = scores.some(s => s.name === 'NINJA_MASTER');
+        if (hasPlaceholders) {
+          localStorage.removeItem(this.storageKey);
+        }
+      } catch (e) {}
+    }
   }
 
   getScores() {

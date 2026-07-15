@@ -17,6 +17,31 @@
   --transition-speed: 0.3s;
 }
 
+:root.light-mode {
+  --bg-dark: #f0f2f8;
+  --bg-dark-trans: rgba(240, 242, 248, 0.75);
+  --color-blue: #0077b3;
+  --color-purple: #8e24aa;
+  --color-pink: #d81b60;
+  --color-gold: #f57c00;
+  --color-text: #1a1f36;
+  --color-text-muted: #546e7a;
+  --glass-bg: rgba(0, 0, 0, 0.03);
+  --glass-border: rgba(0, 0, 0, 0.12);
+  --glass-shadow: rgba(0, 0, 0, 0.25);
+}
+
+.light-mode .bg-grid {
+  background-image: 
+    linear-gradient(to right, rgba(0, 0, 0, 0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.04) 1px, transparent 1px);
+  opacity: 0.8;
+}
+
+.light-mode .bg-glow {
+  opacity: 0.08;
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -114,7 +139,7 @@ body {
   max-width: 1920px;
   max-height: 1080px;
   background-color: transparent;
-  box-shadow: 0 0 50px rgba(0, 0, 0, 0.8);
+  box-shadow: 0 0 50px var(--glass-shadow);
   overflow: hidden;
   z-index: 1;
 }
@@ -331,6 +356,7 @@ body {
   letter-spacing: 3px;
   background: linear-gradient(135deg, #fff 0%, #a4bdfc 100%);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
   filter: drop-shadow(0 0 5px rgba(255,255,255,0.3));
 }
@@ -1060,6 +1086,7 @@ body {
   line-height: 1;
   background: linear-gradient(135deg, var(--color-blue) 0%, var(--color-purple) 50%, var(--color-pink) 100%);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
   filter: drop-shadow(0 0 10px rgba(0,240,255,0.4));
 }
@@ -1203,4 +1230,37 @@ body {
 @keyframes pulse-attract {
   0% { transform: scale(0.98); opacity: 0.8; text-shadow: 0 0 10px var(--color-purple); }
   100% { transform: scale(1.02); opacity: 1; text-shadow: 0 0 25px var(--color-purple), 0 0 50px var(--color-pink); }
+}
+
+/* ================= POWER-UP VIGNETTES ================= */
+.powerup-vignette {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 3;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+
+#freeze-vignette {
+  box-shadow: inset 0 0 100px rgba(0, 240, 255, 0.6);
+  border: 15px solid rgba(0, 240, 255, 0.25);
+  background: radial-gradient(circle, transparent 40%, rgba(0, 150, 255, 0.15) 100%);
+}
+
+#frenzy-vignette {
+  box-shadow: inset 0 0 100px rgba(255, 120, 0, 0.6);
+  border: 15px solid rgba(255, 80, 0, 0.25);
+  background: radial-gradient(circle, transparent 40%, rgba(255, 60, 0, 0.15) 100%);
+}
+
+.freeze-active #freeze-vignette {
+  opacity: 1;
+}
+
+.frenzy-active #frenzy-vignette {
+  opacity: 1;
 }

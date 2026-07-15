@@ -11,7 +11,7 @@ export class Bomb {
 
     // Launch trajectory physics
     const targetX = canvasWidth / 2 + randomRange(-100, 100);
-    const gravity = 0.32;
+    const gravity = 0.11;
     const peakY = randomRange(160, 320);
     const heightDifference = this.y - peakY;
 
@@ -32,22 +32,24 @@ export class Bomb {
     this.blinkTimer = 0;
   }
 
-  update() {
+  update(dt = 16.66) {
+    const timeScale = dt / 16.66;
     if (!this.exploding) {
       // Normal physics
-      this.x += this.vx;
-      this.y += this.vy;
-      this.vy += this.gravity;
-      this.angle += this.spin;
+      this.x += this.vx * timeScale;
+      this.y += this.vy * timeScale;
+      this.vy += this.gravity * timeScale;
+      this.angle += this.spin * timeScale;
 
       // Pulse/blink indicator
-      this.blinkTimer += 1;
-      if (this.blinkTimer % 12 === 0) {
+      this.blinkTimer += 1 * timeScale;
+      if (this.blinkTimer >= 12) {
         this.isBlinking = !this.isBlinking;
+        this.blinkTimer = 0;
       }
     } else {
       // Expand explosion shockwave
-      this.explosionProgress += 0.04;
+      this.explosionProgress += 0.04 * timeScale;
     }
   }
 

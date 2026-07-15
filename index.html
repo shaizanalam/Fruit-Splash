@@ -14,6 +14,11 @@
     <!-- MediaPipe Hands & Camera Utils CDNs -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script>
+      if (localStorage.getItem('fruitslash_lightmode') === 'true') {
+        document.documentElement.classList.add('light-mode');
+      }
+    </script>
   </head>
   <body>
     <!-- Background Animated Grid / Particles -->
@@ -27,6 +32,9 @@
 
     <!-- Main Game Container -->
     <div id="game-container">
+      <!-- POWER-UP SCREEN VIGNETTES -->
+      <div id="freeze-vignette" class="powerup-vignette"></div>
+      <div id="frenzy-vignette" class="powerup-vignette"></div>
       
       <!-- GAME OVER / CONFETTI CANVAS -->
       <canvas id="confetti-canvas"></canvas>
@@ -66,9 +74,15 @@
 
         <!-- Top Center: Score / Time -->
         <div class="hud-center">
-          <div class="hud-score-container glass-panel-compact">
-            <span class="score-label">SCORE</span>
-            <span id="hud-score" class="score-value">000,000</span>
+          <div style="display: flex; gap: 15px; align-items: center; justify-content: center;">
+            <div class="hud-score-container glass-panel-compact">
+              <span class="score-label">SCORE</span>
+              <span id="hud-score" class="score-value">000,000</span>
+            </div>
+            <div class="hud-score-container glass-panel-compact">
+              <span class="score-label" style="color: #ff007a;">TIME</span>
+              <span id="hud-time" class="score-value" style="color: #ff007a; min-width: 80px; text-align: center;">60</span>
+            </div>
           </div>
           <div id="hud-combo-alert" class="hud-combo-alert">
             <span class="combo-title">COMBO!</span>
@@ -168,6 +182,11 @@
             <div class="setting-item checkbox-item">
               <label for="check-debug">Show Hands skeleton</label>
               <input type="checkbox" id="check-debug" checked class="custom-checkbox" />
+            </div>
+
+            <div class="setting-item checkbox-item">
+              <label for="check-lightmode">Light Theme</label>
+              <input type="checkbox" id="check-lightmode" class="custom-checkbox" />
             </div>
           </div>
 

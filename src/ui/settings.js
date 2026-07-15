@@ -8,6 +8,7 @@ class SettingsManager {
     this.cameraSelect = null;
     this.mirrorCheck = null;
     this.debugCheck = null;
+    this.lightModeCheck = null;
   }
 
   init() {
@@ -16,6 +17,7 @@ class SettingsManager {
     this.cameraSelect = document.getElementById('select-camera');
     this.mirrorCheck = document.getElementById('check-mirror');
     this.debugCheck = document.getElementById('check-debug');
+    this.lightModeCheck = document.getElementById('check-lightmode');
 
     // 1. Music Volume Slider
     const musicVal = document.getElementById('music-vol-value');
@@ -57,6 +59,19 @@ class SettingsManager {
     this.debugCheck.checked = handTracker.showDebug;
     this.debugCheck.addEventListener('change', (e) => {
       handTracker.showDebug = e.target.checked;
+    });
+
+    // 4b. Light Theme Toggle
+    const isLightMode = localStorage.getItem('fruitslash_lightmode') === 'true';
+    this.lightModeCheck.checked = isLightMode;
+    this.lightModeCheck.addEventListener('change', (e) => {
+      const checked = e.target.checked;
+      if (checked) {
+        document.documentElement.classList.add('light-mode');
+      } else {
+        document.documentElement.classList.remove('light-mode');
+      }
+      localStorage.setItem('fruitslash_lightmode', checked ? 'true' : 'false');
     });
 
     // 5. Camera dropdown selection

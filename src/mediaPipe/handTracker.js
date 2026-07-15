@@ -52,7 +52,7 @@ class HandTracker {
 
     this.hands.setOptions({
       maxNumHands: 1,
-      modelComplexity: 1,
+      modelComplexity: 0,
       minDetectionConfidence: 0.55,
       minTrackingConfidence: 0.55
     });
@@ -195,9 +195,26 @@ class HandTracker {
         rawY: indexTip.y
       };
 
+      // Fist detection logic
+      let isFist = true;
+      const fingerTips = [8, 12, 16, 20];
+      const fingerMcps = [5, 9, 13, 17];
+      
+      const getDist = (p1, p2) => Math.hypot(p1.x - p2.x, p1.y - p2.y);
+      
+      for (let i = 0; i < 4; i++) {
+        const tip = landmarks[fingerTips[i]];
+        const mcp = landmarks[fingerMcps[i]];
+        // In a fist, fingertips are curled in, so their distance to the wrist is less than or similar to the MCP's distance
+        if (getDist(tip, wrist) > getDist(mcp, wrist) * 1.1) {
+          isFist = false;
+          break;
+        }
+      }
+
       // Notify listeners
       for (const listener of this.listeners) {
-        listener(screenCoords, landmarks);
+        listener(screenCoords, landmarks, isFist);
       }
 
       // Draw debug skeleton if active
@@ -208,7 +225,7 @@ class HandTracker {
       this.handDetected = false;
       this.lastLandmarks = null;
       for (const listener of this.listeners) {
-        listener(null, null);
+        listener(null, null, false);
       }
     }
   }

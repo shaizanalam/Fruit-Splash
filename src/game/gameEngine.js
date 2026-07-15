@@ -20,6 +20,10 @@ class GameEngine {
     this.highScore = 0;
     this.lives = 3;
     
+    // Power-up States
+    this.freezeTimeRemaining = 0;
+    this.frenzyTimeRemaining = 0;
+    
     // Stats
     this.slicedCount = 0;
     this.missedCount = 0;
@@ -78,8 +82,8 @@ class GameEngine {
     this.initBgStars();
 
     // Hook webcam stream coordinate update
-    handTracker.addListener((coords, landmarks) => {
-      this.handleHandTrackingUpdate(coords, landmarks);
+    handTracker.addListener((coords, landmarks, isFist) => {
+      this.handleHandTrackingUpdate(coords, landmarks, isFist);
     });
 
     // Hook mouse backup slicing coordinates
@@ -129,7 +133,7 @@ class GameEngine {
         if (scores.length > 0) return scores[0].score;
       } catch (e) {}
     }
-    return 8000; // default
+    return 0; // default when empty
   }
 
   // --- STATE SWITCHES ---
@@ -140,7 +144,18 @@ class GameEngine {
     
     this.state = 'countdown';
     this.score = 0;
+    this.timeRemaining = 60;
+    this.fistStartTime = null;
+    this.freezeTimeRemaining = 0;
+    this.frenzyTimeRemaining = 0;
     this.lives = 3;
+    
+    // Reset overlay vignettes
+    const container = document.getElementById('game-container');
+    if (container) {
+      container.classList.remove('freeze-active');
+      container.classList.remove('frenzy-active');
+    }
     this.slicedCount = 0;
     this.missedCount = 0;
     this.bombsHitCount = 0;
@@ -207,6 +222,13 @@ class GameEngine {
     audioManager.stopMusic();
     audioManager.playGameOver();
 
+    // Reset overlay vignettes
+    const container = document.getElementById('game-container');
+    if (container) {
+      container.classList.remove('freeze-active');
+      container.classList.remove('frenzy-active');
+    }
+
     // Set screen stats
     document.getElementById('go-score').textContent = this.score.toLocaleString();
     document.getElementById('go-accuracy').textContent = `${this.getAccuracy()}%`;
@@ -242,6 +264,11 @@ class GameEngine {
     document.getElementById('hud-sliced').textContent = this.slicedCount.toString();
     document.getElementById('hud-accuracy').textContent = `${this.getAccuracy()}%`;
     document.getElementById('hud-highscore').textContent = Math.max(this.highScore, this.score).toLocaleString();
+    
+    const timerEl = document.getElementById('hud-time');
+    if (timerEl) {
+      timerEl.textContent = Math.ceil(Math.max(0, this.timeRemaining || 0)).toString();
+    }
 
     // Hearts visual rendering
     const hearts = document.querySelectorAll('.hud-lives .heart');
@@ -262,9 +289,19 @@ class GameEngine {
 
   // --- DETECTING HAND UPDATES & INTERACTIONS ---
 
-  handleHandTrackingUpdate(coords, landmarks) {
+  handleHandTrackingUpdate(coords, landmarks, isFist) {
     const time = performance.now();
     this.lastInteractionTime = time; // player is present!
+
+    if (isFist && this.state === 'playing') {
+      if (!this.fistStartTime) this.fistStartTime = time;
+      else if (time - this.fistStartTime > 800) {
+        this.fistStartTime = null;
+        this.endGame();
+      }
+    } else {
+      this.fistStartTime = null;
+    }
 
     // Clear webcam raise hand prompts
     const prompt = document.getElementById('webcam-prompt');
@@ -322,8 +359,19 @@ class GameEngine {
   // --- ENTITY SPAWNING (DIFFICULTY INCR) ---
 
   spawnObjects(time) {
+    if (this.frenzyTimeRemaining > 0) {
+      // Frenzy Mode: Spawns 2 to 3 fruits rapidly, no bombs
+      const fruitCount = randomInt(2, 3);
+      for (let i = 0; i < fruitCount; i++) {
+        const fruit = new Fruit(this.width, this.height);
+        fruit.vx *= this.baseSpeedFactor * 1.1;
+        fruit.vy *= this.baseSpeedFactor * 1.1;
+        this.entities.push(fruit);
+      }
+      return;
+    }
+
     // Determine spawn parameters based on difficulty level
-    // Difficulty escalates speed, counts, and decreases intervals
     const maxFruits = Math.min(4, Math.floor(1 + this.difficultyLevel * 0.45));
     const fruitCount = randomInt(1, maxFruits);
     
@@ -333,11 +381,18 @@ class GameEngine {
       if (isBomb) {
         this.entities.push(new Bomb(this.width, this.height));
       } else {
-        const fruit = new Fruit(this.width, this.height);
-        // Add difficulty speed scaling
-        fruit.vx *= this.baseSpeedFactor;
-        fruit.vy *= this.baseSpeedFactor;
-        this.entities.push(fruit);
+        // 7% chance to spawn a Power-Up fruit
+        const spawnPowerUp = Math.random() < 0.07;
+        if (spawnPowerUp) {
+          const type = Math.random() < 0.5 ? 'FREEZE_BANANA' : 'FRENZY_PINEAPPLE';
+          this.entities.push(new Fruit(this.width, this.height, type));
+        } else {
+          const fruit = new Fruit(this.width, this.height);
+          // Add difficulty speed scaling
+          fruit.vx *= this.baseSpeedFactor;
+          fruit.vy *= this.baseSpeedFactor;
+          this.entities.push(fruit);
+        }
       }
     }
   }
@@ -351,7 +406,7 @@ class GameEngine {
 
   scaleDifficulty() {
     this.difficultyLevel++;
-    this.baseSpeedFactor = 1.0 + (this.difficultyLevel - 1) * 0.08;
+    this.baseSpeedFactor = 1.0 + (this.difficultyLevel - 1) * 0.02;
     this.spawnInterval = Math.max(750, 1600 - (this.difficultyLevel - 1) * 120);
     // Keep bomb scaling 50% lower to optimize for high exhibition satisfaction
     this.bombProbability = Math.min(0.18, 0.04 + (this.difficultyLevel - 1) * 0.018);
@@ -371,15 +426,17 @@ class GameEngine {
 
   loop() {
     const time = performance.now();
+    const dt = this.lastTime ? time - this.lastTime : 16.66;
+    this.lastTime = time;
 
     // 1. Draw floating background stars always
     this.drawBgStars();
 
     // 2. Main Game state updates
     if (this.state === 'playing') {
-      this.updatePlayingState(time);
+      this.updatePlayingState(time, dt);
     } else if (this.state === 'attract') {
-      this.updateAttractState(time);
+      this.updateAttractState(time, dt);
     } else if (this.state === 'countdown') {
       // Just keep rendering any remnants / trails
       this.ctx.clearRect(0, 0, this.width, this.height);
@@ -392,7 +449,31 @@ class GameEngine {
     requestAnimationFrame(() => this.loop());
   }
 
-  updatePlayingState(time) {
+  updatePlayingState(time, dt) {
+    this.timeRemaining -= dt / 1000;
+    if (this.timeRemaining <= 0) {
+      this.timeRemaining = 0;
+      this.endGame();
+      return;
+    }
+
+    // Update Power-Up timers
+    if (this.freezeTimeRemaining > 0) {
+      this.freezeTimeRemaining -= dt;
+      if (this.freezeTimeRemaining <= 0) {
+        document.getElementById('game-container')?.classList.remove('freeze-active');
+      }
+    }
+    if (this.frenzyTimeRemaining > 0) {
+      this.frenzyTimeRemaining -= dt;
+      if (this.frenzyTimeRemaining <= 0) {
+        document.getElementById('game-container')?.classList.remove('frenzy-active');
+      }
+    }
+
+    // Apply slow motion to physics update if freeze mode is active
+    const physicsDt = this.freezeTimeRemaining > 0 ? dt * 0.3 : dt;
+
     this.ctx.clearRect(0, 0, this.width, this.height);
 
     // Apply Camera Shake offset
@@ -411,13 +492,14 @@ class GameEngine {
     }
 
     // Spawn Object Check
-    if (time - this.lastSpawnTime > this.spawnInterval) {
+    const currentSpawnInterval = this.frenzyTimeRemaining > 0 ? 400 : this.spawnInterval;
+    if (time - this.lastSpawnTime > currentSpawnInterval) {
       this.spawnObjects(time);
       this.lastSpawnTime = time;
     }
 
     // Update Entities
-    this.entities.forEach(obj => obj.update());
+    this.entities.forEach(obj => obj.update(physicsDt));
 
     // Check collisions via hand/mouse trail
     const sliced = physicsEngine.checkCollisions(this.entities, this.width, this.height);
@@ -468,7 +550,7 @@ class GameEngine {
     this.checkExhibitionIdleTimeouts(time);
   }
 
-  updateAttractState(time) {
+  updateAttractState(time, dt) {
     this.ctx.clearRect(0, 0, this.width, this.height);
 
     // Automatically spawn demo fruits
@@ -478,7 +560,7 @@ class GameEngine {
     }
 
     // Update demo items
-    this.entities.forEach(obj => obj.update());
+    this.entities.forEach(obj => obj.update(dt));
 
     // Simulated auto-slice pathing to attract audiences!
     // Every now and then, find a floaty fruit and draw a simulated line slicing through it.
@@ -540,14 +622,44 @@ class GameEngine {
         // Calculate tangent sword slice angle
         const trail = physicsEngine.trail;
         let sliceAngle = 0;
+        let sliceOffset = 0;
         if (trail.length >= 2) {
           const p1 = trail[trail.length - 2];
           const p2 = trail[trail.length - 1];
           sliceAngle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+          
+          // Calculate perpendicular distance from fruit center to the cut line
+          const num = (p2.x - p1.x) * (p1.y - obj.y) - (p1.x - obj.x) * (p2.y - p1.y);
+          const den = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+          if (den !== 0) {
+            sliceOffset = num / den;
+            // Clamp offset so the fruit always splits into two visible pieces, even on edge grazes
+            const maxOffset = obj.radius * 0.9;
+            sliceOffset = Math.max(-maxOffset, Math.min(maxOffset, sliceOffset));
+          }
         }
 
-        obj.slice(sliceAngle);
+        obj.slice(sliceAngle, sliceOffset);
         this.slicedCount++;
+
+        // Handle Power-Up trigger if applicable
+        if (obj.config.isPowerUp) {
+          if (obj.config.powerUpType === 'freeze') {
+            this.freezeTimeRemaining = 5000;
+            this.frenzyTimeRemaining = 0;
+            document.getElementById('game-container')?.classList.remove('frenzy-active');
+            document.getElementById('game-container')?.classList.add('freeze-active');
+            audioManager.playVictory();
+            particleSystem.spawnText(obj.x, obj.y - 45, "FREEZE TIME!", "#00f0ff", true);
+          } else if (obj.config.powerUpType === 'frenzy') {
+            this.frenzyTimeRemaining = 5000;
+            this.freezeTimeRemaining = 0;
+            document.getElementById('game-container')?.classList.remove('freeze-active');
+            document.getElementById('game-container')?.classList.add('frenzy-active');
+            audioManager.playVictory();
+            particleSystem.spawnText(obj.x, obj.y - 45, "FRUIT FRENZY!", "#ffaa00", true);
+          }
+        }
 
         // Add to combo window tally
         this.comboList.push({ obj, time });
@@ -639,7 +751,9 @@ class GameEngine {
     const ctx = this.bgCtx;
     const canvas = this.bgCanvas;
 
-    ctx.fillStyle = '#070913';
+    const isLightMode = document.documentElement.classList.contains('light-mode');
+
+    ctx.fillStyle = isLightMode ? '#f0f2f8' : '#070913';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     this.bgStars.forEach(star => {
@@ -658,9 +772,9 @@ class GameEngine {
 
       ctx.save();
       ctx.globalAlpha = Math.max(0, star.alpha);
-      ctx.shadowBlur = 8;
-      ctx.shadowColor = star.glowColor;
-      ctx.fillStyle = '#ffffff';
+      ctx.shadowBlur = isLightMode ? 2 : 8;
+      ctx.shadowColor = isLightMode ? 'rgba(0,0,0,0.1)' : star.glowColor;
+      ctx.fillStyle = isLightMode ? '#78909c' : '#ffffff';
 
       ctx.beginPath();
       ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);

@@ -26,7 +26,7 @@ class PhysicsEngine {
       const lastPt = this.trail[this.trail.length - 1];
       // Only smooth if hand has been tracked continuously (within last 150ms)
       if (time - lastPt.time < 150) {
-        const smoothing = 0.75;
+        const smoothing = 0.5; // lowered to reduce input lag
         screenX = lastPt.x * smoothing + screenX * (1 - smoothing);
         screenY = lastPt.y * smoothing + screenY * (1 - smoothing);
       }
@@ -89,7 +89,7 @@ class PhysicsEngine {
       const isBomb = obj.constructor.name === 'Bomb';
       const collisionRadius = isBomb 
         ? (obj.radius * 0.8) 
-        : (obj.radius * 1.4 + 15);
+        : (obj.radius * 2.0 + 35);
 
       // 1. Direct Touch Check: If the finger tip/pointer is directly inside the fruit circle
       const distToCenter = distance(tip.x, tip.y, obj.x, obj.y);
