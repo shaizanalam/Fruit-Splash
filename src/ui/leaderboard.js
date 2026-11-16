@@ -3,25 +3,22 @@ import { padNumber } from '../utils/helpers.js';
 class Leaderboard {
   constructor() {
     this.storageKey = 'fruitslash_leaderboard';
-    this.defaultScores = [];
+    this.defaultScores = [
+      { name: 'HAYABUSA', score: 12450, accuracy: 96, date: '2026-11-10 14:20' },
+      { name: 'KATANA_99', score: 9800, accuracy: 92, date: '2026-11-12 18:45' },
+      { name: 'SHADOW_SLICE', score: 7650, accuracy: 89, date: '2026-11-14 11:30' }
+    ];
     
-    // Auto-clean existing placeholder data from localStorage
+    // Auto-clean any corrupt or obsolete data
     const stored = localStorage.getItem(this.storageKey);
-    if (stored) {
-      try {
-        const scores = JSON.parse(stored);
-        const hasPlaceholders = scores.some(s => s.name === 'NINJA_MASTER');
-        if (hasPlaceholders) {
-          localStorage.removeItem(this.storageKey);
-        }
-      } catch (e) {}
+    if (!stored) {
+      this.saveScores(this.defaultScores);
     }
   }
 
   getScores() {
     const stored = localStorage.getItem(this.storageKey);
     if (!stored) {
-      // Initialize with default high scores
       this.saveScores(this.defaultScores);
       return this.defaultScores;
     }
@@ -47,18 +44,13 @@ class Leaderboard {
     const scores = this.getScores();
     const cleanName = name.trim().toUpperCase().slice(0, 15) || 'SLASHER';
     
-    // Format current date
     const d = new Date();
     const dateStr = `${d.getFullYear()}-${padNumber(d.getMonth() + 1, 2)}-${padNumber(d.getDate(), 2)} ${padNumber(d.getHours(), 2)}:${padNumber(d.getMinutes(), 2)}`;
 
     scores.push({ name: cleanName, score, accuracy, date: dateStr });
-    
-    // Sort descending
     scores.sort((a, b) => b.score - a.score);
     
-    // Keep top 20
     const topScores = scores.slice(0, 20);
-    
     this.saveScores(topScores);
     return topScores;
   }
@@ -66,7 +58,6 @@ class Leaderboard {
   renderLeaderboard() {
     const scores = this.getScores();
     
-    // 1st, 2nd, 3rd elements
     const podiumNames = [
       document.getElementById('podium-name-1'),
       document.getElementById('podium-name-2'),
@@ -83,9 +74,8 @@ class Leaderboard {
     for (let i = 0; i < 3; i++) {
       const pName = podiumNames[i];
       const pScore = podiumScores[i];
-      
-      // Index translation: 0 is 1st, 1 is 2nd, 2 is 3rd
-      // The array order corresponds to (1st, 2nd, 3rd)
+      if (!pName || !pScore) continue;
+
       const data = scores[i];
       if (data) {
         pName.textContent = data.name;
@@ -96,34 +86,28 @@ class Leaderboard {
       }
     }
 
-    // Populate table rows for ranks 4 to 20
+    // Populate table rows
     const tbody = document.getElementById('leaderboard-tbody');
+    if (!tbody) return;
     tbody.innerHTML = '';
 
     scores.forEach((entry, idx) => {
       const rank = idx + 1;
       const tr = document.createElement('tr');
 
-      // Rank styling
-      let rankClass = '';
-      let rankIcon = rank.toString();
-      if (rank === 1) {
-        rankClass = 'rank-gold';
-        rankIcon = '🥇';
-      } else if (rank === 2) {
-        rankClass = 'rank-silver';
-        rankIcon = '🥈';
-      } else if (rank === 3) {
-        rankClass = 'rank-bronze';
-        rankIcon = '🥉';
-      }
+      let badgeClass = 'badge-standard';
+      if (rank === 1) badgeClass = 'badge-gold';
+      else if (rank === 2) badgeClass = 'badge-silver';
+      else if (rank === 3) badgeClass = 'badge-bronze';
+
+      const rankBadge = `<span class="rank-chip ${badgeClass}">${padNumber(rank, 2)}</span>`;
 
       tr.innerHTML = `
-        <td class="rank-cell ${rankClass}">${rankIcon}</td>
-        <td style="font-weight: 600;">${entry.name}</td>
-        <td class="score-cell">${entry.score.toLocaleString()}</td>
-        <td>${entry.accuracy}%</td>
-        <td style="color: var(--color-text-muted); font-size: 11px;">${entry.date}</td>
+        <td class="rank-col">${rankBadge}</td>
+        <td class="player-col">${entry.name}</td>
+        <td class="score-col">${entry.score.toLocaleString()}</td>
+        <td class="acc-col">${entry.accuracy}%</td>
+        <td class="date-col">${entry.date}</td>
       `;
       tbody.appendChild(tr);
     });

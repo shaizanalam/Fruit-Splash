@@ -82,8 +82,8 @@ class GameEngine {
     this.initBgStars();
 
     // Hook webcam stream coordinate update
-    handTracker.addListener((coords, landmarks, isFist) => {
-      this.handleHandTrackingUpdate(coords, landmarks, isFist);
+    handTracker.addListener((coords, landmarks, isFist, extendedCutters) => {
+      this.handleHandTrackingUpdate(coords, landmarks, isFist, extendedCutters);
     });
 
     // Hook mouse backup slicing coordinates
@@ -110,16 +110,15 @@ class GameEngine {
 
   initBgStars() {
     this.bgStars = [];
-    const starCount = 60;
+    const starCount = 40;
     for (let i = 0; i < starCount; i++) {
       this.bgStars.push({
         x: Math.random() * this.width,
         y: Math.random() * this.height,
-        size: randomRange(1, 3.5),
-        speed: randomRange(0.1, 0.4),
-        glowColor: Math.random() > 0.5 ? 'rgba(0, 240, 255, 0.3)' : 'rgba(189, 0, 255, 0.3)',
-        pulseRate: randomRange(0.01, 0.03),
-        alpha: randomRange(0.2, 0.8)
+        size: randomRange(1.2, 2.5),
+        speed: randomRange(0.2, 0.5),
+        pulseRate: randomRange(0.008, 0.02),
+        alpha: randomRange(0.1, 0.45)
       });
     }
   }
@@ -289,9 +288,9 @@ class GameEngine {
 
   // --- DETECTING HAND UPDATES & INTERACTIONS ---
 
-  handleHandTrackingUpdate(coords, landmarks, isFist) {
+  handleHandTrackingUpdate(coords, landmarks, isFist, extendedCutters) {
     const time = performance.now();
-    this.lastInteractionTime = time; // player is present!
+    this.lastInteractionTime = time;
 
     if (isFist && this.state === 'playing') {
       if (!this.fistStartTime) this.fistStartTime = time;
@@ -303,24 +302,37 @@ class GameEngine {
       this.fistStartTime = null;
     }
 
-    // Clear webcam raise hand prompts
     const prompt = document.getElementById('webcam-prompt');
     const dot = document.querySelector('.tracking-dot');
+    const cutterBadge = document.getElementById('webcam-cutter-status');
     
     if (coords) {
-      prompt.classList.remove('active');
-      dot.classList.add('tracking');
+      if (prompt) prompt.classList.remove('active');
+      if (dot) dot.classList.add('tracking');
+
+      if (cutterBadge) {
+        const count = coords.cutters ? coords.cutters.length : 1;
+        if (count > 1) {
+          cutterBadge.textContent = `${count} BLADES ACTIVE`;
+        } else if (count === 1) {
+          const name = coords.primary?.name || 'FINGER';
+          cutterBadge.textContent = `${name.toUpperCase()} BLADE`;
+        } else {
+          cutterBadge.textContent = 'READY';
+        }
+      }
       
-      // Update interactive neon trail
+      // Update interactive blade trails
       if (this.state === 'playing') {
-        physicsEngine.updateTrail(coords, this.width, this.height);
+        physicsEngine.updateTrails(coords, this.width, this.height);
       }
     } else {
-      prompt.classList.add('active');
-      dot.classList.remove('tracking');
+      if (prompt) prompt.classList.add('active');
+      if (dot) dot.classList.remove('tracking');
+      if (cutterBadge) cutterBadge.textContent = 'ANY FINGER CUTS';
       
       if (this.state === 'playing') {
-        physicsEngine.updateTrail(null, this.width, this.height);
+        physicsEngine.updateTrails(null, this.width, this.height);
       }
     }
   }
@@ -334,22 +346,27 @@ class GameEngine {
 
       const normX = e.clientX / this.width;
       const normY = e.clientY / this.height;
-      this.mouseCoords = { x: normX, y: normY };
+      this.mouseCoords = {
+        id: 'mouse',
+        x: normX,
+        y: normY,
+        cutters: [{ id: 'mouse', name: 'Mouse', x: normX, y: normY }]
+      };
 
       if (this.state === 'playing' && this.isMouseSlicing) {
-        physicsEngine.updateTrail(this.mouseCoords, this.width, this.height);
+        physicsEngine.updateTrails(this.mouseCoords, this.width, this.height);
       }
     };
 
     window.addEventListener('mousedown', () => {
       this.isMouseSlicing = true;
-      audioManager.unlock(); // unlock audio context on click
+      audioManager.unlock();
     });
 
     window.addEventListener('mouseup', () => {
       this.isMouseSlicing = false;
       if (!handTracker.handDetected && this.state === 'playing') {
-        physicsEngine.updateTrail(null, this.width, this.height);
+        physicsEngine.updateTrails(null, this.width, this.height);
       }
     });
 
@@ -415,8 +432,8 @@ class GameEngine {
     particleSystem.spawnText(
       this.width / 2,
       this.height * 0.4,
-      `LEVEL ${this.difficultyLevel} — FASTER FRUITS!`,
-      '#ffb800',
+      `LEVEL ${this.difficultyLevel} — SPEED UP`,
+      '#fbbf24',
       true
     );
     audioManager.playVictory();
@@ -597,7 +614,11 @@ class GameEngine {
     const time = performance.now();
     this.lastInteractionTime = time;
 
-    slicedObjects.forEach(obj => {
+    slicedObjects.forEach(item => {
+      const obj = item.obj || item;
+      const sliceAngle = item.sliceAngle !== undefined ? item.sliceAngle : (Math.random() - 0.5);
+      const sliceOffset = item.sliceOffset !== undefined ? item.sliceOffset : 0;
+
       if (obj instanceof Bomb) {
         // BOOM!
         obj.triggerExplosion();
@@ -617,28 +638,6 @@ class GameEngine {
           this.endGame();
         }
       } else if (obj instanceof Fruit) {
-        // Slice fruit
-        const speed = physicsEngine.getSliceVelocity();
-        // Calculate tangent sword slice angle
-        const trail = physicsEngine.trail;
-        let sliceAngle = 0;
-        let sliceOffset = 0;
-        if (trail.length >= 2) {
-          const p1 = trail[trail.length - 2];
-          const p2 = trail[trail.length - 1];
-          sliceAngle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
-          
-          // Calculate perpendicular distance from fruit center to the cut line
-          const num = (p2.x - p1.x) * (p1.y - obj.y) - (p1.x - obj.x) * (p2.y - p1.y);
-          const den = Math.hypot(p2.x - p1.x, p2.y - p1.y);
-          if (den !== 0) {
-            sliceOffset = num / den;
-            // Clamp offset so the fruit always splits into two visible pieces, even on edge grazes
-            const maxOffset = obj.radius * 0.9;
-            sliceOffset = Math.max(-maxOffset, Math.min(maxOffset, sliceOffset));
-          }
-        }
-
         obj.slice(sliceAngle, sliceOffset);
         this.slicedCount++;
 
@@ -650,20 +649,20 @@ class GameEngine {
             document.getElementById('game-container')?.classList.remove('frenzy-active');
             document.getElementById('game-container')?.classList.add('freeze-active');
             audioManager.playVictory();
-            particleSystem.spawnText(obj.x, obj.y - 45, "FREEZE TIME!", "#00f0ff", true);
+            particleSystem.spawnText(obj.x, obj.y - 45, "FREEZE TIME", "#38bdf8", true);
           } else if (obj.config.powerUpType === 'frenzy') {
             this.frenzyTimeRemaining = 5000;
             this.freezeTimeRemaining = 0;
             document.getElementById('game-container')?.classList.remove('freeze-active');
             document.getElementById('game-container')?.classList.add('frenzy-active');
             audioManager.playVictory();
-            particleSystem.spawnText(obj.x, obj.y - 45, "FRUIT FRENZY!", "#ffaa00", true);
+            particleSystem.spawnText(obj.x, obj.y - 45, "FRUIT FRENZY", "#f97316", true);
           }
         }
 
         // Add to combo window tally
         this.comboList.push({ obj, time });
-        this.comboTimer = time; // reset timer
+        this.comboTimer = time;
 
         audioManager.playSlice();
         
@@ -681,71 +680,68 @@ class GameEngine {
       const count = this.comboList.length;
       
       if (count >= 2) {
-        // Multiplier scaling
         let multiplier = 2;
-        let comboText = "DOUBLE SLICE!";
-        let comboColor = "#ff007a"; // pink
+        let comboText = "DOUBLE SLASH";
+        let comboColor = "#38bdf8";
 
         if (count >= 10) {
           multiplier = 10;
-          comboText = "LEGENDARY SLASH!";
-          comboColor = "#00ffff"; // cyan rainbow
+          comboText = "LEGENDARY SLASHER";
+          comboColor = "#00e676";
         } else if (count >= 8) {
           multiplier = 8;
-          comboText = "NINJA COMBO!";
-          comboColor = "#ff00ff"; // purple
+          comboText = "SHADOW KATANA";
+          comboColor = "#f43f5e";
         } else if (count >= 5) {
           multiplier = 5;
-          comboText = "FRUIT MASTER!";
-          comboColor = "#ffb800"; // gold
+          comboText = "BLADE MASTER";
+          comboColor = "#fbbf24";
         } else if (count >= 3) {
           multiplier = 3;
-          comboText = "TRIPLE COMBO!";
-          comboColor = "#bd00ff"; // violet
+          comboText = "TRIPLE COMBO";
+          comboColor = "#a855f7";
         }
 
         const comboPoints = count * 100 * multiplier;
         this.score += comboPoints;
 
-        // Peak combo records
         if (count > this.maxComboReached) {
           this.maxComboReached = count;
         }
 
-        // Trigger visual alerts on HUD
         const comboAlert = document.getElementById('hud-combo-alert');
         const comboCountText = document.getElementById('hud-combo-count');
-        const comboTitleText = comboAlert.querySelector('.combo-title');
+        const comboTitleText = comboAlert ? comboAlert.querySelector('.combo-title') : null;
 
-        comboTitleText.textContent = comboText;
-        comboCountText.textContent = `+${comboPoints.toLocaleString()}`;
-        comboCountText.style.textShadow = `0 0 10px ${comboColor}`;
+        if (comboTitleText) comboTitleText.textContent = comboText;
+        if (comboCountText) {
+          comboCountText.textContent = `+${comboPoints.toLocaleString()}`;
+          comboCountText.style.color = comboColor;
+        }
         
-        comboAlert.classList.add('active');
-        audioManager.playCombo(count);
+        if (comboAlert) {
+          comboAlert.classList.add('active');
+          audioManager.playCombo(count);
 
-        // Spawn combo text popup right above last sliced position
-        const lastSlice = this.comboList[this.comboList.length - 1].obj;
-        particleSystem.spawnText(lastSlice.x, lastSlice.y - 30, comboText, comboColor, true);
+          const lastSlice = this.comboList[this.comboList.length - 1].obj;
+          particleSystem.spawnText(lastSlice.x, lastSlice.y - 30, comboText, comboColor, true);
 
-        // Hide combo HUD after delay
-        setTimeout(() => {
-          comboAlert.classList.remove('active');
-        }, 1200);
+          setTimeout(() => {
+            comboAlert.classList.remove('active');
+          }, 1200);
+        }
 
       } else {
-        // Single slice score
         this.score += 100;
         const lastSlice = this.comboList[0].obj;
-        particleSystem.spawnText(lastSlice.x, lastSlice.y - 20, "+100", "#00f0ff");
+        particleSystem.spawnText(lastSlice.x, lastSlice.y - 20, "+100", "#38bdf8");
       }
 
-      // Reset list
       this.comboList = [];
     }
   }
 
-  // --- BACKGROUND PARTICLES RENDERING ---
+  // --- AMBIENT PARTICLES RENDERING ---
 
   drawBgStars() {
     const ctx = this.bgCtx;
@@ -753,28 +749,24 @@ class GameEngine {
 
     const isLightMode = document.documentElement.classList.contains('light-mode');
 
-    ctx.fillStyle = isLightMode ? '#f0f2f8' : '#070913';
+    ctx.fillStyle = isLightMode ? '#f8fafc' : '#090a0f';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     this.bgStars.forEach(star => {
-      // Floating motion upwards
       star.y -= star.speed;
       if (star.y < -10) {
         star.y = canvas.height + 10;
         star.x = Math.random() * canvas.width;
       }
 
-      // Glow pulse oscillation
       star.alpha += star.pulseRate;
-      if (star.alpha > 0.95 || star.alpha < 0.15) {
+      if (star.alpha > 0.45 || star.alpha < 0.08) {
         star.pulseRate = -star.pulseRate;
       }
 
       ctx.save();
       ctx.globalAlpha = Math.max(0, star.alpha);
-      ctx.shadowBlur = isLightMode ? 2 : 8;
-      ctx.shadowColor = isLightMode ? 'rgba(0,0,0,0.1)' : star.glowColor;
-      ctx.fillStyle = isLightMode ? '#78909c' : '#ffffff';
+      ctx.fillStyle = isLightMode ? '#94a3b8' : '#38bdf8';
 
       ctx.beginPath();
       ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);

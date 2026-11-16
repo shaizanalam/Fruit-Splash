@@ -4,12 +4,12 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Fruit Slash AI — Exhibition Edition</title>
+    <title>Fruit Slash — Precision Motion Arcade</title>
     
-    <!-- Google Fonts -->
+    <!-- Premium Modern Typography -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
     
     <!-- MediaPipe Hands & Camera Utils CDNs -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
@@ -21,39 +21,46 @@
     </script>
   </head>
   <body>
-    <!-- Background Animated Grid / Particles -->
+    <!-- Subtle Background Canvas -->
     <div id="bg-glow-container">
-      <div class="bg-glow glow-blue"></div>
-      <div class="bg-glow glow-purple"></div>
-      <div class="bg-glow glow-pink"></div>
-      <div class="bg-grid"></div>
       <canvas id="bg-particles-canvas"></canvas>
     </div>
 
     <!-- Main Game Container -->
     <div id="game-container">
-      <!-- POWER-UP SCREEN VIGNETTES -->
+      <!-- Power-up screen vignettes -->
       <div id="freeze-vignette" class="powerup-vignette"></div>
       <div id="frenzy-vignette" class="powerup-vignette"></div>
       
-      <!-- GAME OVER / CONFETTI CANVAS -->
+      <!-- Confetti / VFX Canvas -->
       <canvas id="confetti-canvas"></canvas>
 
-      <!-- MAIN GAMEPLAY CANVAS -->
+      <!-- Main Gameplay Canvas -->
       <canvas id="game-canvas"></canvas>
 
-      <!-- WEBCAM GLASS CONTAINER (Floating Preview) -->
-      <div id="webcam-panel" class="glass-panel">
+      <!-- CAMERA TRACKING PIP PANEL -->
+      <div id="webcam-panel" class="webcam-pip">
         <div class="panel-header">
-          <span class="tracking-dot"></span>
-          <span class="panel-title">AI HAND TRACKING</span>
+          <div class="tracking-indicator">
+            <span class="tracking-dot"></span>
+            <span class="panel-title">LIVE TRACKING</span>
+          </div>
+          <span id="webcam-cutter-status" class="cutter-status-badge">ANY FINGER CUTS</span>
         </div>
         <div class="webcam-wrapper">
           <video id="webcam-video" autoplay playsinline muted></video>
           <canvas id="webcam-canvas"></canvas>
           <div id="webcam-prompt" class="webcam-prompt active">
-            <div class="prompt-icon">✋</div>
-            <div class="prompt-text">Raise hand to begin</div>
+            <div class="prompt-icon-wrapper">
+              <svg class="prompt-hand-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M18 11V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v0"></path>
+                <path d="M14 10V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v2"></path>
+                <path d="M10 10.5V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8"></path>
+                <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"></path>
+              </svg>
+            </div>
+            <div class="prompt-text">Position hand in camera frame</div>
+            <div class="prompt-subtext">Any extended finger acts as a blade</div>
           </div>
         </div>
       </div>
@@ -61,45 +68,59 @@
       <!-- IN-GAME HUD -->
       <div id="hud" class="hud-container hidden">
         <!-- Top Left: Stats -->
-        <div class="hud-left glass-panel-compact">
-          <div class="hud-stat">
+        <div class="hud-card hud-left">
+          <div class="hud-stat-pill">
             <span class="stat-label">FRUITS</span>
-            <span id="hud-sliced" class="stat-value text-glowing-blue">0</span>
+            <span id="hud-sliced" class="stat-value text-accent-cyan">0</span>
           </div>
-          <div class="hud-stat">
+          <div class="hud-stat-pill">
             <span class="stat-label">ACCURACY</span>
-            <span id="hud-accuracy" class="stat-value text-glowing-pink">100%</span>
+            <span id="hud-accuracy" class="stat-value text-accent-orange">100%</span>
           </div>
         </div>
 
-        <!-- Top Center: Score / Time -->
+        <!-- Top Center: Score & Timer -->
         <div class="hud-center">
-          <div style="display: flex; gap: 15px; align-items: center; justify-content: center;">
-            <div class="hud-score-container glass-panel-compact">
+          <div class="hud-center-cluster">
+            <div class="hud-score-card">
               <span class="score-label">SCORE</span>
               <span id="hud-score" class="score-value">000,000</span>
             </div>
-            <div class="hud-score-container glass-panel-compact">
-              <span class="score-label" style="color: #ff007a;">TIME</span>
-              <span id="hud-time" class="score-value" style="color: #ff007a; min-width: 80px; text-align: center;">60</span>
+            <div class="hud-timer-card">
+              <span class="score-label">TIME</span>
+              <span id="hud-time" class="timer-value">60</span>
             </div>
           </div>
+
+          <!-- Combo Notification Banner -->
           <div id="hud-combo-alert" class="hud-combo-alert">
             <span class="combo-title">COMBO!</span>
-            <span id="hud-combo-count" class="combo-number">3x</span>
+            <span id="hud-combo-count" class="combo-number">+300</span>
           </div>
         </div>
 
-        <!-- Top Right: Lives & High Score -->
-        <div class="hud-right glass-panel-compact">
-          <div class="hud-stat">
-            <span class="stat-label">HIGH</span>
-            <span id="hud-highscore" class="stat-value text-glowing-gold">0</span>
+        <!-- Top Right: High Score & Lives -->
+        <div class="hud-card hud-right">
+          <div class="hud-stat-pill">
+            <span class="stat-label">RECORD</span>
+            <span id="hud-highscore" class="stat-value text-accent-gold">0</span>
           </div>
           <div class="hud-lives">
-            <span class="heart active">❤️</span>
-            <span class="heart active">❤️</span>
-            <span class="heart active">❤️</span>
+            <div class="heart active">
+              <svg viewBox="0 0 24 24" class="heart-svg" fill="currentColor">
+                <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+              </svg>
+            </div>
+            <div class="heart active">
+              <svg viewBox="0 0 24 24" class="heart-svg" fill="currentColor">
+                <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+              </svg>
+            </div>
+            <div class="heart active">
+              <svg viewBox="0 0 24 24" class="heart-svg" fill="currentColor">
+                <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+              </svg>
+            </div>
           </div>
         </div>
       </div>
@@ -108,131 +129,192 @@
 
       <!-- LOADING SCREEN -->
       <div id="loading-screen" class="screen-overlay active">
-        <div class="loading-content glass-panel">
-          <h1 class="logo-title text-glowing-purple">FRUIT SLASH AI</h1>
-          <div class="loading-spinner"></div>
-          <p id="loading-status" class="loading-status-text">Initializing game elements...</p>
-          <div class="progress-bar-container">
-            <div id="loading-progress" class="progress-bar"></div>
+        <div class="loading-card glass-modal">
+          <div class="brand-badge">MOTION ARCADE</div>
+          <h1 class="logo-title">FRUIT SLASH</h1>
+          <div class="loader-line-container">
+            <div id="loading-progress" class="loader-line-bar"></div>
           </div>
+          <p id="loading-status" class="loading-status-text">Initializing motion models...</p>
         </div>
       </div>
 
       <!-- MAIN MENU -->
       <div id="main-menu" class="screen-overlay hidden">
-        <div class="menu-content">
-          <div class="logo-container">
-            <h1 class="logo-title text-glowing-blue">FRUIT SLASH AI</h1>
-            <p class="logo-subtitle">EXHIBITION EDITION</p>
+        <div class="menu-layout">
+          <div class="brand-hero">
+            <div class="hero-tag">
+              <span class="tag-dot"></span>
+              <span>CAMERA MOTION TRACKING</span>
+            </div>
+            <h1 class="hero-brand-title">
+              FRUIT<span class="title-accent">SLASH</span>
+            </h1>
+            <p class="hero-subtitle">Point or swipe with any finger to cut. Slice fruits, avoid bombs, chain combos.</p>
           </div>
           
           <div class="menu-actions">
-            <button id="btn-start" class="btn btn-primary btn-glow-purple">
-              <span class="btn-icon">▶</span> START GAME
+            <button id="btn-start" class="btn btn-primary btn-play">
+              <svg class="btn-svg" viewBox="0 0 24 24" fill="currentColor">
+                <polygon points="5 3 19 12 5 21 5 3"/>
+              </svg>
+              <span>START GAME</span>
             </button>
+            
             <button id="btn-leaderboard" class="btn btn-secondary">
-              <span class="btn-icon">🏆</span> LEADERBOARD
+              <svg class="btn-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/>
+                <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/>
+                <path d="M4 22h16"/>
+                <path d="M10 14.66V17c0 .55-.45 1-1 1H7"/>
+                <path d="M14 14.66V17c0 .55.45 1 1 1h2"/>
+                <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>
+              </svg>
+              <span>LEADERBOARD</span>
             </button>
-            <button id="btn-settings" class="btn btn-secondary">
-              <span class="btn-icon">⚙</span> SETTINGS
-            </button>
+
             <button id="btn-how-to" class="btn btn-secondary">
-              <span class="btn-icon">📖</span> HOW TO PLAY
+              <svg class="btn-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+              <span>HOW TO PLAY</span>
             </button>
+
+            <button id="btn-settings" class="btn btn-secondary">
+              <svg class="btn-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+              </svg>
+              <span>SETTINGS</span>
+            </button>
+          </div>
+
+          <div class="menu-footer-hint">
+            <span class="hint-key">TIP</span> Extend any finger (thumb, index, pinky) or multiple fingers for multi-blade claw slicing
           </div>
         </div>
       </div>
 
       <!-- SETTINGS SCREEN -->
       <div id="settings-screen" class="screen-overlay hidden">
-        <div class="settings-content glass-panel">
-          <h2 class="screen-title text-glowing-purple">SETTINGS</h2>
+        <div class="modal-card glass-modal">
+          <div class="modal-header">
+            <h2 class="modal-title">SETTINGS</h2>
+            <p class="modal-subtitle">Configure audio, camera feed, and tracking options</p>
+          </div>
           
           <div class="settings-grid">
             <div class="setting-item">
-              <label for="select-camera">Webcam Device</label>
+              <label for="select-camera" class="setting-label">Camera Source</label>
               <select id="select-camera" class="custom-select">
                 <option value="">Default Camera</option>
               </select>
             </div>
 
             <div class="setting-item">
-              <label>Music Volume</label>
-              <div class="slider-wrapper">
-                <span class="volume-icon">🎵</span>
-                <input type="range" id="slider-music" min="0" max="1" step="0.05" value="0.5" />
+              <div class="setting-label-row">
+                <span class="setting-label">Music Volume</span>
                 <span id="music-vol-value" class="slider-val">50%</span>
+              </div>
+              <div class="slider-wrapper">
+                <input type="range" id="slider-music" min="0" max="1" step="0.05" value="0.5" class="custom-slider" />
               </div>
             </div>
 
             <div class="setting-item">
-              <label>SFX Volume</label>
-              <div class="slider-wrapper">
-                <span class="volume-icon">🔊</span>
-                <input type="range" id="slider-sfx" min="0" max="1" step="0.05" value="0.7" />
+              <div class="setting-label-row">
+                <span class="setting-label">SFX Volume</span>
                 <span id="sfx-vol-value" class="slider-val">70%</span>
+              </div>
+              <div class="slider-wrapper">
+                <input type="range" id="slider-sfx" min="0" max="1" step="0.05" value="0.7" class="custom-slider" />
               </div>
             </div>
 
-            <div class="setting-item checkbox-item">
-              <label for="check-mirror">Mirror Camera Feed</label>
-              <input type="checkbox" id="check-mirror" checked class="custom-checkbox" />
+            <div class="setting-item switch-item">
+              <div class="switch-info">
+                <span class="setting-label">Mirror Camera Feed</span>
+                <span class="setting-desc">Flip preview horizontally like a mirror</span>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="check-mirror" checked />
+                <span class="toggle-slider"></span>
+              </label>
             </div>
 
-            <div class="setting-item checkbox-item">
-              <label for="check-debug">Show Hands skeleton</label>
-              <input type="checkbox" id="check-debug" checked class="custom-checkbox" />
+            <div class="setting-item switch-item">
+              <div class="switch-info">
+                <span class="setting-label">Show Hand Skeleton</span>
+                <span class="setting-desc">Display active cutter joints & blade reticles</span>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="check-debug" checked />
+                <span class="toggle-slider"></span>
+              </label>
             </div>
 
-            <div class="setting-item checkbox-item">
-              <label for="check-lightmode">Light Theme</label>
-              <input type="checkbox" id="check-lightmode" class="custom-checkbox" />
+            <div class="setting-item switch-item">
+              <div class="switch-info">
+                <span class="setting-label">Light Theme</span>
+                <span class="setting-desc">Clean daylight interface mode</span>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="check-lightmode" />
+                <span class="toggle-slider"></span>
+              </label>
             </div>
           </div>
 
-          <div class="screen-actions">
-            <button id="btn-settings-back" class="btn btn-secondary btn-back">BACK</button>
+          <div class="modal-actions">
+            <button id="btn-settings-back" class="btn btn-secondary">BACK</button>
           </div>
         </div>
       </div>
 
       <!-- LEADERBOARD SCREEN -->
       <div id="leaderboard-screen" class="screen-overlay hidden">
-        <div class="leaderboard-content glass-panel">
-          <h2 class="screen-title text-glowing-gold">🏆 LEADERBOARD</h2>
+        <div class="modal-card glass-modal leaderboard-modal">
+          <div class="modal-header">
+            <h2 class="modal-title">HALL OF FAME</h2>
+            <p class="modal-subtitle">Top master slashers and high scores</p>
+          </div>
 
-          <!-- Visual Podium for Top 3 -->
-          <div class="podium-container">
-            <div class="podium-stand podium-2nd">
-              <div class="podium-avatar">🥈</div>
-              <div id="podium-name-2" class="podium-name">Player 2</div>
-              <div id="podium-score-2" class="podium-score">0</div>
-              <div class="stand-block">2</div>
+          <!-- Podium for Top 3 -->
+          <div class="podium-row">
+            <!-- 2nd Place -->
+            <div class="podium-card podium-silver">
+              <div class="podium-rank-pill silver">02</div>
+              <div id="podium-name-2" class="podium-player">PLAYER 2</div>
+              <div id="podium-score-2" class="podium-points">0</div>
             </div>
-            <div class="podium-stand podium-1st">
-              <div class="podium-avatar">👑🥇</div>
-              <div id="podium-name-1" class="podium-name">Player 1</div>
-              <div id="podium-score-1" class="podium-score">0</div>
-              <div class="stand-block">1</div>
+
+            <!-- 1st Place -->
+            <div class="podium-card podium-gold">
+              <div class="podium-rank-pill gold">01</div>
+              <div id="podium-name-1" class="podium-player">PLAYER 1</div>
+              <div id="podium-score-1" class="podium-points">0</div>
             </div>
-            <div class="podium-stand podium-3rd">
-              <div class="podium-avatar">🥉</div>
-              <div id="podium-name-3" class="podium-name">Player 3</div>
-              <div id="podium-score-3" class="podium-score">0</div>
-              <div class="stand-block">3</div>
+
+            <!-- 3rd Place -->
+            <div class="podium-card podium-bronze">
+              <div class="podium-rank-pill bronze">03</div>
+              <div id="podium-name-3" class="podium-player">PLAYER 3</div>
+              <div id="podium-score-3" class="podium-points">0</div>
             </div>
           </div>
 
-          <!-- Rest of the leaderboard list -->
-          <div class="leaderboard-list-wrapper">
-            <table class="leaderboard-table">
+          <!-- Rest of the leaderboard table -->
+          <div class="leaderboard-table-container">
+            <table class="modern-table">
               <thead>
                 <tr>
-                  <th>Rank</th>
-                  <th>Name</th>
-                  <th>Score</th>
-                  <th>Accuracy</th>
-                  <th>Date</th>
+                  <th>RANK</th>
+                  <th>SLASHER</th>
+                  <th>SCORE</th>
+                  <th>ACCURACY</th>
+                  <th>DATE</th>
                 </tr>
               </thead>
               <tbody id="leaderboard-tbody">
@@ -241,96 +323,119 @@
             </table>
           </div>
 
-          <div class="screen-actions">
-            <button id="btn-leaderboard-back" class="btn btn-secondary btn-back">BACK</button>
+          <div class="modal-actions">
+            <button id="btn-leaderboard-back" class="btn btn-secondary">BACK</button>
           </div>
         </div>
       </div>
 
       <!-- HOW TO PLAY SCREEN -->
       <div id="how-to-play-screen" class="screen-overlay hidden">
-        <div class="howto-content glass-panel">
-          <h2 class="screen-title text-glowing-blue">HOW TO PLAY</h2>
+        <div class="modal-card glass-modal howto-modal">
+          <div class="modal-header">
+            <h2 class="modal-title">HOW TO PLAY</h2>
+            <p class="modal-subtitle">Fast, natural hand motion controls</p>
+          </div>
           
-          <div class="howto-grid">
-            <div class="howto-step">
-              <div class="step-num">1</div>
-              <h3>Position Webcam</h3>
-              <p>Stand about 1-2 meters away from your laptop or PC webcam. Ensure good lighting.</p>
+          <div class="steps-grid">
+            <div class="step-card">
+              <div class="step-badge">1</div>
+              <h3 class="step-heading">Webcam Position</h3>
+              <p class="step-text">Stand 1–2 meters back in even lighting so your hand is clearly visible in frame.</p>
             </div>
-            <div class="howto-step">
-              <div class="step-num">2</div>
-              <h3>Raise Hand</h3>
-              <p>Raise either hand in front of the camera. The AI will draw a glowing skeleton over your hand.</p>
+
+            <div class="step-card">
+              <div class="step-badge">2</div>
+              <h3 class="step-heading">Any Finger Cuts</h3>
+              <p class="step-text">Point with your index, thumb, middle, or pinky. Open your whole hand for multi-blade claw slicing!</p>
             </div>
-            <div class="howto-step">
-              <div class="step-num">3</div>
-              <h3>Slice Fruit</h3>
-              <p>Your index finger acts as a glowing Katana! Move your hand rapidly to slash flying fruits and avoid bombs.</p>
+
+            <div class="step-card">
+              <div class="step-badge">3</div>
+              <h3 class="step-heading">Slice & Dodge</h3>
+              <p class="step-text">Slash flying fruits in rapid sweeps to build combo multipliers. Avoid black spiked bombs.</p>
             </div>
           </div>
 
-          <!-- Interactive practice box -->
-          <div class="practice-box">
-            <div class="practice-label">PRACTICE AREA (MOVE FINGER TO DRAW Slices)</div>
+          <!-- Interactive practice canvas -->
+          <div class="practice-container">
+            <div class="practice-header">
+              <span class="practice-dot"></span>
+              <span>INTERACTIVE PRACTICE AREA — MOVE FINGER OVER CANVAS</span>
+            </div>
             <canvas id="practice-canvas"></canvas>
           </div>
 
-          <div class="screen-actions">
-            <button id="btn-howto-back" class="btn btn-secondary btn-back">BACK</button>
+          <div class="modal-actions">
+            <button id="btn-howto-back" class="btn btn-secondary">BACK</button>
           </div>
         </div>
       </div>
 
       <!-- GAME OVER SCREEN -->
       <div id="game-over-screen" class="screen-overlay hidden">
-        <div class="gameover-content glass-panel">
-          <h1 class="gameover-title text-glowing-pink">GAME OVER</h1>
+        <div class="modal-card glass-modal gameover-modal">
+          <div class="modal-header">
+            <div class="round-ended-tag">ROUND COMPLETED</div>
+            <h1 class="gameover-heading">GAME OVER</h1>
+          </div>
           
-          <div class="gameover-stats">
-            <div class="go-stat-box">
-              <span class="go-stat-label">FINAL SCORE</span>
-              <span id="go-score" class="go-stat-val text-glowing-blue">0</span>
+          <div class="stats-overview-grid">
+            <div class="stat-card highlight">
+              <span class="stat-card-label">FINAL SCORE</span>
+              <span id="go-score" class="stat-card-value text-accent-cyan">0</span>
             </div>
-            <div class="go-stat-box">
-              <span class="go-stat-label">ACCURACY</span>
-              <span id="go-accuracy" class="go-stat-val text-glowing-pink">0%</span>
+            <div class="stat-card">
+              <span class="stat-card-label">ACCURACY</span>
+              <span id="go-accuracy" class="stat-card-value text-accent-orange">0%</span>
             </div>
-            <div class="go-stat-box">
-              <span class="go-stat-label">MAX COMBO</span>
-              <span id="go-combo" class="go-stat-val text-glowing-gold">0</span>
+            <div class="stat-card">
+              <span class="stat-card-label">MAX COMBO</span>
+              <span id="go-combo" class="stat-card-value text-accent-gold">0x</span>
             </div>
-            <div class="go-stat-box">
-              <span class="go-stat-label">SLICED FRUITS</span>
-              <span id="go-fruits" class="go-stat-val text-glowing-blue">0</span>
+            <div class="stat-card">
+              <span class="stat-card-label">FRUITS SLICED</span>
+              <span id="go-fruits" class="stat-card-value">0</span>
             </div>
           </div>
 
-          <!-- Name Entry Form (Only displays if qualify for leaderboard / game over) -->
+          <!-- Name Entry Form -->
           <div id="name-entry-container" class="name-entry-container">
-            <p class="new-high-score-alert">🎉 NEW LEADERBOARD ENTRY! 🎉</p>
-            <div class="input-group">
-              <input type="text" id="player-name-input" maxlength="15" placeholder="ENTER YOUR NAME" autocomplete="off" />
-              <button id="btn-submit-score" class="btn btn-primary">SUBMIT</button>
+            <p class="new-high-score-alert">NEW HIGH SCORE! ENTER YOUR NAME</p>
+            <div class="input-row">
+              <input type="text" id="player-name-input" maxlength="15" placeholder="NAME" autocomplete="off" class="modern-input" />
+              <button id="btn-submit-score" class="btn btn-primary">SAVE</button>
             </div>
           </div>
 
-          <div class="screen-actions">
+          <div class="gameover-actions">
             <button id="btn-gameover-menu" class="btn btn-secondary">MAIN MENU</button>
-            <button id="btn-gameover-restart" class="btn btn-primary btn-glow-blue">PLAY AGAIN</button>
+            <button id="btn-gameover-restart" class="btn btn-primary btn-play">
+              <svg class="btn-svg" viewBox="0 0 24 24" fill="currentColor">
+                <polygon points="5 3 19 12 5 21 5 3"/>
+              </svg>
+              <span>PLAY AGAIN</span>
+            </button>
           </div>
         </div>
       </div>
 
       <!-- ATTRACT SCREEN (Idle Display) -->
       <div id="attract-screen" class="screen-overlay hidden">
-        <div class="attract-content">
-          <div class="attract-callout text-glowing-purple">COME TRY AI HAND TRACKING</div>
-          <div class="attract-logo text-glowing-blue">FRUIT SLASH AI</div>
-          <p class="attract-hint">Raise your hand in front of the camera to start playing!</p>
-          <div class="attract-animation-placeholder">
-            <div class="sensor-wave"></div>
-            <span class="hand-symbol">✋</span>
+        <div class="attract-layout">
+          <div class="attract-pill">INTERACTIVE MOTION SENSOR</div>
+          <h1 class="attract-title">FRUIT<span class="title-accent">SLASH</span></h1>
+          <p class="attract-hint">Raise or swipe your hand in front of the camera to play</p>
+          <div class="attract-visual-wave">
+            <div class="radar-circle c1"></div>
+            <div class="radar-circle c2"></div>
+            <div class="radar-circle c3"></div>
+            <svg class="attract-hand-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+              <path d="M18 11V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v0"></path>
+              <path d="M14 10V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v2"></path>
+              <path d="M10 10.5V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8"></path>
+              <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"></path>
+            </svg>
           </div>
         </div>
       </div>
@@ -339,7 +444,6 @@
       <div id="countdown-overlay" class="countdown-overlay hidden">
         <span id="countdown-number" class="countdown-number">3</span>
       </div>
-
     </div>
 
     <!-- Main Module script entrypoint -->

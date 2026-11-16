@@ -2,189 +2,278 @@ import { checkLineCircleCollision, interpolateSegmentPoints, distance } from '..
 
 class PhysicsEngine {
   constructor() {
-    this.trail = []; // [{x, y, time}, ...]
-    this.maxTrailAge = 180; // ms
-    this.minSliceVelocity = 4.0; // minimum pixels per millisecond to register a slice
+    // Map of fingerId -> array of points [{ x, y, time }]
+    this.trails = new Map();
+    this.maxTrailAge = 190; // ms
   }
 
-  // Update trail with new point from tracker
-  // coords = {x: 0..1, y: 0..1} mapped to screen px
-  updateTrail(coords, width, height) {
+  // Update multi-finger trails
+  // Accepts coords: single point { x, y } OR enhanced object with { cutters: [...] }
+  updateTrails(coords, width, height) {
     const time = performance.now();
-    
+
     if (!coords) {
-      // If hand is lost, let trail decay naturally
-      this.decayTrail(time);
+      this.decayAllTrails(time);
       return;
     }
 
-    let screenX = coords.x * width;
-    let screenY = coords.y * height;
+    const activeCutters = coords.cutters && coords.cutters.length > 0 
+      ? coords.cutters 
+      : [{ id: coords.id || 'primary', x: coords.x, y: coords.y }];
 
-    // Apply exponential moving average (EMA) smoothing of 0.75 to eliminate camera jitter
-    if (this.trail.length > 0) {
-      const lastPt = this.trail[this.trail.length - 1];
-      // Only smooth if hand has been tracked continuously (within last 150ms)
-      if (time - lastPt.time < 150) {
-        const smoothing = 0.5; // lowered to reduce input lag
-        screenX = lastPt.x * smoothing + screenX * (1 - smoothing);
-        screenY = lastPt.y * smoothing + screenY * (1 - smoothing);
+    const activeIds = new Set();
+
+    for (const cutter of activeCutters) {
+      const id = cutter.id || 'primary';
+      activeIds.add(id);
+
+      let screenX = cutter.x * width;
+      let screenY = cutter.y * height;
+
+      let trail = this.trails.get(id);
+      if (!trail) {
+        trail = [];
+        this.trails.set(id, trail);
       }
+
+      // Exponential moving average (EMA) smoothing to eliminate camera jitter
+      if (trail.length > 0) {
+        const lastPt = trail[trail.length - 1];
+        if (time - lastPt.time < 120) {
+          const smoothing = 0.45; // responsive low-lag smoothing
+          screenX = lastPt.x * smoothing + screenX * (1 - smoothing);
+          screenY = lastPt.y * smoothing + screenY * (1 - smoothing);
+        }
+      }
+
+      trail.push({ x: screenX, y: screenY, time });
+
+      // Decay this specific trail
+      this.decayTrail(trail, time);
     }
 
-    this.trail.push({ x: screenX, y: screenY, time });
-    this.decayTrail(time);
+    // Decay trails for fingers that are no longer extended
+    for (const [id, trail] of this.trails.entries()) {
+      if (!activeIds.has(id)) {
+        this.decayTrail(trail, time);
+        if (trail.length === 0) {
+          this.trails.delete(id);
+        }
+      }
+    }
   }
 
-  decayTrail(currentTime) {
-    // Filter out points older than the time decay
-    this.trail = this.trail.filter(pt => (currentTime - pt.time) < this.maxTrailAge);
-    // Limit trail points to exactly/at most 10 for quick responsive styling
-    if (this.trail.length > 10) {
-      this.trail = this.trail.slice(-10);
+  // Backward compatibility alias
+  updateTrail(coords, width, height) {
+    this.updateTrails(coords, width, height);
+  }
+
+  decayTrail(trail, currentTime) {
+    let i = 0;
+    while (i < trail.length && (currentTime - trail[i].time) >= this.maxTrailAge) {
+      i++;
+    }
+    if (i > 0) {
+      trail.splice(0, i);
+    }
+    // Limit to max 12 points for crisp responsive feel
+    if (trail.length > 12) {
+      trail.splice(0, trail.length - 12);
+    }
+  }
+
+  decayAllTrails(currentTime) {
+    for (const [id, trail] of this.trails.entries()) {
+      this.decayTrail(trail, currentTime);
+      if (trail.length === 0) {
+        this.trails.delete(id);
+      }
     }
   }
 
   clearTrail() {
-    this.trail = [];
+    this.trails.clear();
   }
 
-  // Calculate speed of the last slice segment
-  getSliceVelocity() {
-    if (this.trail.length < 2) return 0;
-    
-    const p1 = this.trail[this.trail.length - 2];
-    const p2 = this.trail[this.trail.length - 1];
-    
+  // Calculate speed of the last slice segment for a specific cutter
+  getSliceVelocity(trailId = null) {
+    let targetTrail = null;
+    if (trailId && this.trails.has(trailId)) {
+      targetTrail = this.trails.get(trailId);
+    } else {
+      // Find the fastest active trail
+      for (const trail of this.trails.values()) {
+        if (!targetTrail || trail.length > targetTrail.length) {
+          targetTrail = trail;
+        }
+      }
+    }
+
+    if (!targetTrail || targetTrail.length < 2) return 0;
+
+    const p1 = targetTrail[targetTrail.length - 2];
+    const p2 = targetTrail[targetTrail.length - 1];
+
     const dist = distance(p1.x, p1.y, p2.x, p2.y);
-    const timeDiff = p2.time - p1.time; // ms
-    
+    const timeDiff = p2.time - p1.time;
+
     if (timeDiff <= 0) return 0;
     return dist / timeDiff; // px/ms
   }
 
-  // Perform continuous collision check against active fruits/bombs
-  // Returns array of sliced objects in this frame
+  // Perform continuous collision check across all active finger/mouse cutter trails
+  // Returns array of sliced items with slice metadata: [{ obj, sliceAngle, sliceOffset, cutterId }]
   checkCollisions(objects, width, height) {
-    if (this.trail.length === 0) return [];
+    if (this.trails.size === 0) return [];
 
-    const tip = this.trail[this.trail.length - 1]; // Current fingertip/mouse tip
-    const slicedObjects = [];
+    const slicedResults = [];
+    const alreadySlicedInFrame = new Set();
 
-    // Interpolate points between last two frames to make sure no gaps
-    let subSegments = [];
-    if (this.trail.length >= 2) {
-      const p1 = this.trail[this.trail.length - 2];
-      subSegments = interpolateSegmentPoints(p1.x, p1.y, tip.x, tip.y, 8);
-    }
+    for (const [cutterId, trail] of this.trails.entries()) {
+      if (trail.length === 0) continue;
 
-    for (const obj of objects) {
-      if (obj.sliced || obj.exploding) continue;
+      const tip = trail[trail.length - 1];
+      let subSegments = [];
 
-      let hit = false;
-      
-      // Exhibition settings:
-      // - Fruit hitbox: 1.4x radius + 15px auto-hit tolerance for generous slices
-      // - Bomb hitbox: 0.8x radius to forgive close shaves and avoid frustration
-      const isBomb = obj.constructor.name === 'Bomb';
-      const collisionRadius = isBomb 
-        ? (obj.radius * 0.8) 
-        : (obj.radius * 2.0 + 35);
-
-      // 1. Direct Touch Check: If the finger tip/pointer is directly inside the fruit circle
-      const distToCenter = distance(tip.x, tip.y, obj.x, obj.y);
-      if (distToCenter <= collisionRadius) {
-        hit = true;
+      if (trail.length >= 2) {
+        const p1 = trail[trail.length - 2];
+        subSegments = interpolateSegmentPoints(p1.x, p1.y, tip.x, tip.y, 8);
       }
 
-      // 2. Line Intersection Check (fallback for rapid hand sweeps)
-      if (!hit && subSegments.length >= 2) {
-        for (let i = 0; i < subSegments.length - 1; i++) {
-          const segStart = subSegments[i];
-          const segEnd = subSegments[i + 1];
+      for (const obj of objects) {
+        if (obj.sliced || obj.exploding || alreadySlicedInFrame.has(obj)) continue;
 
-          if (checkLineCircleCollision(
-            segStart.x, segStart.y,
-            segEnd.x, segEnd.y,
-            obj.x, obj.y,
-            collisionRadius
-          )) {
-            hit = true;
-            break;
+        let hit = false;
+        const isBomb = obj.constructor.name === 'Bomb';
+        // Generous, satisfying hitboxes
+        const collisionRadius = isBomb 
+          ? (obj.radius * 0.8) 
+          : (obj.radius * 1.8 + 25);
+
+        // 1. Direct touch check
+        const distToCenter = distance(tip.x, tip.y, obj.x, obj.y);
+        if (distToCenter <= collisionRadius) {
+          hit = true;
+        }
+
+        // 2. Continuous line sweep check
+        if (!hit && subSegments.length >= 2) {
+          for (let i = 0; i < subSegments.length - 1; i++) {
+            const segStart = subSegments[i];
+            const segEnd = subSegments[i + 1];
+
+            if (checkLineCircleCollision(
+              segStart.x, segStart.y,
+              segEnd.x, segEnd.y,
+              obj.x, obj.y,
+              collisionRadius
+            )) {
+              hit = true;
+              break;
+            }
           }
         }
-      }
 
-      if (hit) {
-        slicedObjects.push(obj);
+        if (hit) {
+          alreadySlicedInFrame.add(obj);
+
+          // Calculate precise cut angle and offset
+          let sliceAngle = 0;
+          let sliceOffset = 0;
+
+          if (trail.length >= 2) {
+            const p1 = trail[trail.length - 2];
+            const p2 = trail[trail.length - 1];
+            sliceAngle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+
+            const num = (p2.x - p1.x) * (p1.y - obj.y) - (p1.x - obj.x) * (p2.y - p1.y);
+            const den = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+            if (den !== 0) {
+              sliceOffset = num / den;
+              const maxOffset = obj.radius * 0.85;
+              sliceOffset = Math.max(-maxOffset, Math.min(maxOffset, sliceOffset));
+            }
+          }
+
+          slicedResults.push({
+            obj,
+            cutterId,
+            sliceAngle,
+            sliceOffset
+          });
+        }
       }
     }
 
-    return slicedObjects;
+    return slicedResults;
   }
 
-  // Draw the neon sword trail on canvas
+  // Draw refined katana blade trails for all active cutters
   drawTrail(ctx, comboCount) {
-    if (this.trail.length < 2) return;
+    if (this.trails.size === 0) return;
 
     ctx.save();
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
-    // Select neon glow colors based on combo status
-    let glowColor = '#00f0ff'; // blue
-    let innerColor = '#ffffff';
+    // Premium arcade palette (blade silver, cyan, gold, ruby)
+    let glowColor = '#38bdf8'; // Blade Cyan
+    let coreColor = '#ffffff';
 
     if (comboCount >= 8) {
-      // Max combo: animated rainbow glow
-      const t = performance.now() * 0.005;
-      const r = Math.sin(t) * 127 + 128;
-      const g = Math.sin(t + 2) * 127 + 128;
-      const b = Math.sin(t + 4) * 127 + 128;
-      glowColor = `rgb(${r},${g},${b})`;
+      glowColor = '#f43f5e'; // Fiery Ruby
     } else if (comboCount >= 5) {
-      glowColor = '#ffb800'; // gold
+      glowColor = '#fbbf24'; // Radiant Gold
     } else if (comboCount >= 3) {
-      glowColor = '#bd00ff'; // purple
-    } else if (comboCount >= 2) {
-      glowColor = '#ff007a'; // pink
+      glowColor = '#a855f7'; // Royal Purple
     }
 
-    // Draw multi-layered glowing trail
-    // Outer glow layer
-    ctx.shadowBlur = 15;
-    ctx.shadowColor = glowColor;
-    ctx.strokeStyle = glowColor;
+    for (const [id, trail] of this.trails.entries()) {
+      if (trail.length < 2) continue;
 
-    // We draw connected lines that taper in thickness
-    for (let i = 1; i < this.trail.length; i++) {
-      const p1 = this.trail[i - 1];
-      const p2 = this.trail[i];
-      
-      // Calculate width tapering from head (index 8 tip) to tail (start of array)
-      const ratio = i / this.trail.length;
-      ctx.lineWidth = 14 * ratio; // outer thick width
-      
+      // Outer blade aura
+      ctx.shadowBlur = 12;
+      ctx.shadowColor = glowColor;
+      ctx.strokeStyle = glowColor;
+
+      for (let i = 1; i < trail.length; i++) {
+        const p1 = trail[i - 1];
+        const p2 = trail[i];
+        const ratio = i / trail.length;
+        ctx.lineWidth = 10 * ratio;
+
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(p2.x, p2.y);
+        ctx.stroke();
+      }
+
+      // Inner razor core
+      ctx.shadowBlur = 4;
+      ctx.strokeStyle = coreColor;
+
+      for (let i = 1; i < trail.length; i++) {
+        const p1 = trail[i - 1];
+        const p2 = trail[i];
+        const ratio = i / trail.length;
+        ctx.lineWidth = 3.5 * ratio;
+
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(p2.x, p2.y);
+        ctx.stroke();
+      }
+
+      // Blade tip glint
+      const tip = trail[trail.length - 1];
+      ctx.save();
+      ctx.shadowBlur = 10;
+      ctx.shadowColor = '#ffffff';
+      ctx.fillStyle = '#ffffff';
       ctx.beginPath();
-      ctx.moveTo(p1.x, p1.y);
-      ctx.lineTo(p2.x, p2.y);
-      ctx.stroke();
-    }
-
-    // Inner bright core layer
-    ctx.shadowBlur = 4;
-    ctx.strokeStyle = innerColor;
-
-    for (let i = 1; i < this.trail.length; i++) {
-      const p1 = this.trail[i - 1];
-      const p2 = this.trail[i];
-      const ratio = i / this.trail.length;
-      ctx.lineWidth = 4 * ratio; // thin sharp inner width
-
-      ctx.beginPath();
-      ctx.moveTo(p1.x, p1.y);
-      ctx.lineTo(p2.x, p2.y);
-      ctx.stroke();
+      ctx.arc(tip.x, tip.y, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
     }
 
     ctx.restore();

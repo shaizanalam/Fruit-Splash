@@ -21,7 +21,7 @@ async function bootstrap() {
     const canvas = document.getElementById('webcam-canvas');
     
     // 2. Loading MediaPipe Hands from CDN
-    updateLoadingProgress(45, "Loading AI Hand Tracking models...");
+    updateLoadingProgress(45, "Loading motion tracking models...");
     await handTracker.init(video, canvas);
     
     // 3. Requesting Webcam Perms & Startup
